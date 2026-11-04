@@ -1,0 +1,37 @@
+{% extends "public/_base.html" %}
+{% block title %}Menu · {{ st.shop_name }}{% endblock %}
+{% block page %}
+<div class="wrap" style="padding-top:40px;padding-bottom:120px">
+  <span class="eyebrow">Pre-order menu · 24 hours' notice</span>
+  <h1>Our menu</h1>
+  {% if not st.accepting_orders %}<div class="alert info">We're not taking new orders right now. You can still look, and chat with us below.</div>{% endif %}
+  <div class="tabs" id="tabs">{% for key, label, items in sections %}<a href="#s-{{ key }}" data-tab="{{ key }}" {% if loop.first %}class="on"{% endif %}>{{ label.split(' · ')[0] }}</a>{% endfor %}</div>
+
+  {% for key, label, items in sections %}
+  <section class="menu-section" id="s-{{ key }}" data-section="{{ key }}">
+    <h2>{{ label.split(' · ')[0] }}{% if ' · ' in label %} <span class="thin" style="font-size:.6em">{{ label.split(' · ')[1] }}</span>{% endif %}</h2>
+    <div class="cards">
+      {% for it in items %}
+      <article class="dish" id="{{ it.slug }}">
+        {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
+        {% if it.image %}<img src="/static/img/{{ it.image }}" alt="{{ it.name }}" loading="lazy">{% else %}<div class="noimg">{{ it.name }}</div>{% endif %}
+        <div class="body">
+          <h3>{{ it.name }}</h3><p>{{ it.description }}</p>
+          <div class="opts">
+            {% for o in it.options %}
+            <div class="opt" data-option="{{ o.id }}" data-name="{{ it.name }}" data-portion="{{ o.label }}" data-price="{{ o.price }}">
+              <div><div class="lbl">{{ o.label }}</div><div class="price">{{ money(o.price) }}</div></div>
+              <div class="opt-ctrl"><button class="btn primary add" type="button" data-add {% if not st.accepting_orders %}disabled{% endif %}>Add</button>
+                <span class="qty hide"><button type="button" data-dec aria-label="One less">−</button><span data-q>0</span><button type="button" data-inc aria-label="One more">+</button></span></div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<div class="basket hide" id="basket-bar"><div><b data-cart-total>£0.00</b> <span class="small" style="opacity:.8"><span data-cart-count>0</span> items</span></div><a class="btn primary" href="/checkout">Checkout</a></div>
+{% endblock %}

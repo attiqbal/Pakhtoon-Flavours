@@ -1,0 +1,37 @@
+{% extends "public/_base.html" %}
+{% block title %}Order {{ o.id }} · {{ st.shop_name }}{% endblock %}
+{% block page %}
+<div class="wrap" style="padding-top:40px;padding-bottom:80px;max-width:900px">
+  {% set msg = request.query_params.get('msg') %}{% set err = request.query_params.get('error') %}
+  {% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}{% if err %}<div class="alert error">{{ err }}</div>{% endif %}
+  <span class="eyebrow">Order no. {{ o.id }}</span>
+  {% if o.status == 'cancelled' %}<h1>Order cancelled</h1>
+  {% elif new %}<h1>Thank you,<br><span class="thin">{{ o.customer_name.split()[0] }}!</span></h1>
+  {% else %}<h1>Your order</h1>{% endif %}
+  <p class="muted">Keep this page: it's your order link. It updates as we cook.</p>
+
+  <div class="grid two" style="align-items:start;margin-top:26px">
+    <div class="card {% if o.status in ['ready'] %}sage{% endif %}">
+      <div class="row between"><h2 style="margin:0">{{ o.date_pretty }}, {{ o.time }}</h2><span class="badge {{ o.status }}">{{ o.status }}</span></div>
+      <p class="muted" style="margin-top:8px">{{ o.fulfilment|capitalize }}{% if o.fulfilment == 'delivery' %} to {{ o.address }}, {{ o.postcode }}{% else %} from {{ st.kitchen_postcode }}{% endif %}</p>
+      {% for i in o['items'] %}<div class="summary-line"><span>{{ i.qty }} × {{ i.dish }} <span class="faint small">({{ i.portion }})</span></span><span>{{ money(i.qty * i.unit_price) }}</span></div>{% endfor %}
+      {% if o.delivery_fee %}<div class="summary-line"><span>Delivery</span><span>{{ money(o.delivery_fee) }}</span></div>{% endif %}
+      <div class="summary-line total"><span>Total</span><span>{{ money(o.total) }}</span></div>
+      <p class="small" style="margin-top:12px">Payment: <b>{{ 'Cash' if o.payment_method == 'cash' else 'Bank transfer' }}</b> · <span class="badge {{ o.payment_status }}">{{ {'unpaid':'not paid yet','reported':'checking payment','paid':'paid'}[o.payment_status] }}</span></p>
+    </div>
+    <div class="stack">
+      {% if o.status != 'cancelled' and o.payment_method == 'bank' and o.payment_status == 'unpaid' %}
+      <div class="card sand"><h2>Paying by bank transfer</h2><pre class="msg" style="background:transparent;border:0;padding:0">{{ payment_msg }}</pre>
+        <form method="post" action="/o/{{ o.code }}/paid" style="margin-top:14px"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn primary">I've paid</button></form></div>
+      {% endif %}
+      <div class="card"><h2>Need to change something?</h2><p class="small muted">Chat with us here, or message us on WhatsApp {{ st.whatsapp }} with your order number ({{ o.id }}).</p>
+        <div class="row"><button class="btn small" type="button" onclick="PF.openChat('Hi, about my order no. {{ o.id }}: ')">Chat about this order</button>
+        {% if can_cancel %}<form method="post" action="/o/{{ o.code }}/cancel" onsubmit="return confirm('Cancel this order?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small danger">Cancel order</button></form>{% endif %}</div></div>
+    </div>
+  </div>
+
+  <details class="card" style="margin-top:20px" {% if new %}open{% endif %}><summary style="cursor:pointer;font-weight:700">Your confirmation</summary>
+    <pre class="msg" style="margin-top:14px">{{ confirmation }}</pre><pre class="msg" style="margin-top:10px">{{ policy }}</pre></details>
+</div>
+{% endblock %}
+{% block scripts %}<script>try{localStorage.removeItem('pf_cart')}catch(e){} PF.updateCount();</script>{% endblock %}

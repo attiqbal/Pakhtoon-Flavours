@@ -1,0 +1,39 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Messages{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Customer chats</span><h1>Messages</h1></div>
+  <p class="small muted" style="max-width:420px">{% if ai_on and st.ai_enabled %}{{ st.assistant_name }} (AI) answers customers straight away. Step in any time: your reply pauses it for that chat.{% else %}The AI assistant is off, so customers get a short "we'll reply shortly" message and you answer here.{% endif %}</p></div>
+<div class="inbox">
+  <div class="threads">
+    {% for c in convs %}
+    <a href="/owner/inbox/{{ c.id }}" class="{% if current and current.id == c.id %}on{% endif %}">
+      <div class="row between"><b>{{ c.name or 'Customer' }}</b>{% if c.needs_owner %}<span class="badge cooking">needs you</span>{% elif c.unread %}<span class="badge confirmed">new</span>{% endif %}</div>
+      <div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.last.text or '' }}</div>
+      <div class="tiny faint">{{ c.channel }} · {{ c.updated_at[:16].replace('T', ' ') }}{% if c.ai_paused %} · AI paused{% endif %}</div>
+    </a>
+    {% else %}<div class="card sage"><p style="margin:0">No chats yet. When a customer uses "Chat with us" on the website, it appears here.</p></div>{% endfor %}
+  </div>
+  {% if current %}
+  <div class="convo">
+    <div class="row between" style="padding:16px 18px;border-bottom:1px solid var(--line)">
+      <div><b>{{ current.name or 'Customer' }}</b> <span class="faint small">{{ current.channel }}{% if current.contact %} · {{ current.contact }}{% endif %}</span></div>
+      <div class="row">
+        <form method="post" action="/owner/inbox/{{ current.id }}/ai"><input type="hidden" name="csrf" value="{{ csrf }}">
+          {% if current.ai_paused %}<button class="btn small" name="on" value="1">Hand back to {{ st.assistant_name }}</button>{% else %}<button class="btn small">Pause AI here</button>{% endif %}</form>
+        {% if current.needs_owner %}<form method="post" action="/owner/inbox/{{ current.id }}/done"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Mark handled</button></form>{% endif %}
+      </div>
+    </div>
+    <div class="chat-log" id="convo-log">
+      {% for l in lines %}<div class="bubble {{ 'them' if l.sender == 'customer' else ('me' if l.sender == 'owner' else 'ai') }}"><span class="who">{{ {'customer': current.name or 'Customer', 'owner': 'You', 'ai': st.assistant_name ~ ' (AI)'}[l.sender] }} · {{ l.created_at[11:16] }}</span>{{ l.text }}</div>{% endfor %}
+    </div>
+    <form method="post" action="/owner/inbox/{{ current.id }}/reply" class="chat-form" style="flex-wrap:wrap"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="text" placeholder="Reply as {{ st.shop_name }}…" required maxlength="2000" style="flex:1;min-width:200px" aria-label="Reply">
+      <button class="btn primary small">Send</button>
+      <label class="check tiny" style="width:100%;margin:4px 0 0"><input type="checkbox" name="pause" value="1" {% if current.ai_paused or current.needs_owner %}checked{% endif %}> Pause the AI in this chat while I handle it</label>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script>const l = document.getElementById("convo-log"); if (l) l.scrollTop = l.scrollHeight;
+{% if current %}setInterval(async () => { if (document.activeElement && document.activeElement.name === "text" && document.activeElement.value) return; const r = await fetch(location.pathname, {cache: "no-store"}); const h = await r.text(); const d = new DOMParser().parseFromString(h, "text/html"); const n = d.getElementById("convo-log"); if (n && n.innerHTML !== l.innerHTML) { l.innerHTML = n.innerHTML; l.scrollTop = l.scrollHeight; } }, 8000);{% endif %}</script>{% endblock %}

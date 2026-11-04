@@ -1,0 +1,60 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Stock{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Ingredients</span><h1>Stock</h1></div></div>
+<datalist id="ing">{% for i in items %}<option value="{{ i.name }}">{% endfor %}</datalist>
+<div class="grid three" style="align-items:start;margin-bottom:24px">
+  <form method="post" action="/owner/stock/purchase" class="card sage"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Bought something</h2>
+    <div class="field"><label>Ingredient</label><input name="name" list="ing" required placeholder="Lamb"></div>
+    <div class="grid" style="grid-template-columns:1fr 90px;gap:8px"><div class="field"><label>Amount</label><input name="qty" inputmode="decimal" required></div>
+      <div class="field"><label>Unit</label><select name="unit">{% for u in ['kg','g','l','ml','pcs'] %}<option>{{ u }}</option>{% endfor %}</select></div></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px"><div class="field"><label>Cost £</label><input name="cost" inputmode="decimal" required></div>
+      <div class="field"><label>Date</label><input type="date" name="date" value="{{ today }}"></div></div>
+    <button class="btn primary block">Add to stock</button>
+  </form>
+  <form method="post" action="/owner/stock/writeoff" class="card sand"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Write off</h2>
+    <p class="small muted">Food that spoiled, went out of date, got dropped or was left over.</p>
+    <div class="field"><label>Ingredient</label><select name="ingredient" required>{% for i in items %}<option value="{{ i.id }}">{{ i.name }} ({{ i.stock_txt }})</option>{% else %}<option value="">Add a purchase first</option>{% endfor %}</select></div>
+    <div class="grid" style="grid-template-columns:1fr 90px;gap:8px"><div class="field"><label>Amount</label><input name="qty" inputmode="decimal" required></div>
+      <div class="field"><label>Unit</label><select name="unit">{% for u in ['kg','g','l','ml','pcs'] %}<option>{{ u }}</option>{% endfor %}</select></div></div>
+    <div class="field"><label>Reason</label><select name="reason">{% for r in reasons %}<option>{{ r }}</option>{% endfor %}</select></div>
+    <div class="field"><input name="detail" placeholder="Details (optional)" aria-label="Details"></div>
+    <button class="btn block">Write off</button>
+  </form>
+  <form method="post" action="/owner/stock/count" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Stock count</h2>
+    <p class="small muted">Counted what's really in the fridge? Set it here.</p>
+    <div class="field"><label>Ingredient</label><select name="ingredient" required>{% for i in items %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}</select></div>
+    <div class="grid" style="grid-template-columns:1fr 90px;gap:8px"><div class="field"><label>Actual amount</label><input name="qty" inputmode="decimal" required></div>
+      <div class="field"><label>Unit</label><select name="unit">{% for u in ['kg','g','l','ml','pcs'] %}<option>{{ u }}</option>{% endfor %}</select></div></div>
+    <button class="btn block">Save count</button>
+  </form>
+</div>
+
+<div class="grid two" style="align-items:start">
+  <div class="card">
+    <h2>In stock</h2>
+    {% if items %}<table class="list"><thead><tr><th>Ingredient</th><th>Have</th><th>Warn below</th><th>Cost</th></tr></thead><tbody>
+    {% for i in items %}<tr><td>{{ i.name }}{% if i.low %} <span class="badge cancelled">low</span>{% endif %}</td><td><b>{{ i.stock_txt }}</b></td>
+      <td><form method="post" action="/owner/stock/low" class="row" style="gap:4px;flex-wrap:nowrap"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="ingredient" value="{{ i.id }}"><input type="hidden" name="unit" value="{{ i.unit }}">
+        <input name="qty" value="{{ '%g'|format(i.low_at) }}" style="width:80px;padding:6px 8px" aria-label="Warn below"><span class="small faint">{{ i.unit }}</span><button class="btn small">Set</button></form></td>
+      <td class="small faint">{% if i.cost_per_unit %}£{{ '%.2f'|format(i.cost_per_unit * (1000 if i.unit in ['g','ml'] else 1)) }}/{{ 'kg' if i.unit == 'g' else ('l' if i.unit == 'ml' else 'each') }}{% endif %}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted">Nothing yet. Add your first purchase above, or add recipes on the Menu page.</p>{% endif %}
+  </div>
+  <div class="stack">
+    <div class="card sage">
+      <h2>Shopping list</h2>
+      <form method="get" class="row" style="margin-bottom:12px"><input type="date" name="start" value="{{ start }}" style="max-width:170px" aria-label="From"><span>to</span><input type="date" name="end" value="{{ end }}" style="max-width:170px" aria-label="To"><button class="btn small">Show</button></form>
+      <p class="small">For {{ sl.orders }} order{{ '' if sl.orders == 1 else 's' }}, using your recipes and what's in stock.</p>
+      {% for r in sl.rows %}<div class="summary-line"><span>{{ r.name }} <span class="faint small">(need {{ r.need }}, have {{ r.have }})</span></span><b>{{ r.buy }}</b></div>{% else %}<p class="muted">Nothing to buy.</p>{% endfor %}
+      {% if sl.total %}<div class="summary-line total"><span>Rough cost</span><span>{{ money(sl.total) }}</span></div>{% endif %}
+      {% if sl.no_recipe %}<p class="small" style="margin-top:12px">No recipe yet for: {{ sl.no_recipe|join(', ') }}. <a href="/owner/menu">Add recipes</a></p>{% endif %}
+    </div>
+    <div class="card"><h2>History</h2>
+      {% for m in history %}<div class="summary-line small"><span>{{ m.date }} · {{ m.name }} <span class="faint">{{ {'purchase':'bought','writeoff':'written off','use':'used','count':'counted'}[m.kind] }}{% if m.reason %} · {{ m.reason }}{% endif %}</span></span><span>{{ m.qty_txt }}{% if m.cost %} · {{ money(m.cost) }}{% endif %}</span></div>
+      {% else %}<p class="muted">No stock movements yet.</p>{% endfor %}</div>
+  </div>
+</div>
+{% endblock %}

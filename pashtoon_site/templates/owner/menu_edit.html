@@ -1,0 +1,32 @@
+{% extends "owner/_layout.html" %}
+{% block title %}{{ it.name if it else 'New dish' }}{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow"><a href="/owner/menu">Menu</a></span><h1>{{ it.name if it else 'New dish' }}</h1></div></div>
+<form method="post" action="/owner/menu/{{ it.id if it else 'new' }}" class="grid two" style="align-items:start"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="card">
+    <div class="field"><label>Name</label><input name="name" value="{{ it.name if it else '' }}" required></div>
+    <div class="field"><label>Section</label><select name="category">{% for k, label in menu_categories %}<option value="{{ k }}" {% if it and it.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Description</label><textarea name="description" rows="3">{{ it.description if it else '' }}</textarea></div>
+    <div class="field"><label>Notice needed (hours)</label><input type="number" name="notice_hours" min="0" max="336" value="{{ it.notice_hours if it else 24 }}" style="max-width:120px"></div>
+    <label class="check"><input type="checkbox" name="available" value="1" {% if not it or it.available %}checked{% endif %}> On the menu</label>
+    {% if it and it.image %}<img src="/static/img/{{ it.image }}" alt="" style="border-radius:20px;margin-top:14px;max-width:240px">{% endif %}
+  </div>
+  <div class="card">
+    <h2>Portions and prices</h2>
+    {% set opts = it.options if it else [] %}
+    {% for i in range(opts|length + 2) %}{% set o = opts[i] if i < opts|length else none %}
+    <div class="grid" style="grid-template-columns:1fr 110px;gap:10px;margin-bottom:8px">
+      <input type="hidden" name="opt_id_{{ i }}" value="{{ o.id if o else '' }}">
+      <input name="opt_label_{{ i }}" value="{{ o.label if o else '' }}" placeholder="{{ 'Portion, e.g. Per person' if not o else '' }}" aria-label="Portion">
+      <input name="opt_price_{{ i }}" value="{{ '%.2f'|format(o.price) if o else '' }}" placeholder="£" inputmode="decimal" aria-label="Price">
+    </div>
+    {% endfor %}
+    <p class="hint">Clear a portion's name to remove it.</p>
+    {% if opts %}<h2 style="margin-top:22px">Recipes</h2>
+    <p class="small muted">Ingredients for <b>one</b> of each portion, one per line, like <code>250 g lamb</code>, <code>1 pcs onion</code> or <code>2 tbsp oil</code>. Units: g, kg, ml, l, tbsp, tsp, cup, pcs.</p>
+    {% for o in opts %}<div class="field"><label>{{ o.label }}{% if o.cost %} <span class="faint">· costs about {{ money(o.cost) }} to make</span>{% endif %}</label>
+      <textarea name="recipe_{{ o.id }}" rows="4" placeholder="500 g lamb&#10;1 pcs onion&#10;20 g ginger">{{ o.recipe }}</textarea></div>{% endfor %}{% endif %}
+    <button class="btn primary block">Save</button>
+  </div>
+</form>
+{% endblock %}

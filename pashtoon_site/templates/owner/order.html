@@ -1,0 +1,43 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Order {{ o.id }}{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Order #{{ o.id }} · {{ o.source }}</span><h1>{{ o.customer_name }}</h1></div>
+  <div class="row"><span class="badge {{ o.status }}" style="font-size:14px;padding:6px 14px">{{ o.status }}</span><span class="badge {{ o.payment_status }}" style="font-size:14px;padding:6px 14px">{{ o.payment_status }}</span></div></div>
+<div class="grid two" style="align-items:start">
+  <div class="stack">
+    <div class="card">
+      <h2>{{ o.date_pretty }}, {{ o.time }}</h2>
+      <p>{{ o.fulfilment|capitalize }}{% if o.fulfilment == 'delivery' %} to <b>{{ o.address }}, {{ o.postcode }}</b> <span class="faint">({{ o.miles }} miles)</span>{% endif %}</p>
+      <p><a href="tel:{{ o.phone }}">{{ o.phone }}</a>{% if o.email %} · {{ o.email }}{% endif %}</p>
+      {% for i in o['items'] %}<div class="summary-line"><span>{{ i.qty }} × {{ i.dish }} <span class="faint small">({{ i.portion }})</span></span><span>{{ money(i.qty * i.unit_price) }}</span></div>{% endfor %}
+      <div class="summary-line"><span>Delivery</span><span>{{ money(o.delivery_fee) }}</span></div>
+      <div class="summary-line total"><span>Total</span><span>{{ money(o.total) }}</span></div>
+      {% if o.notes %}<div class="alert info" style="margin:14px 0 0">Note from customer: {{ o.notes }}</div>{% endif %}
+      <p class="small faint" style="margin-top:12px">Customer's tracking link: <a href="{{ track_url }}" target="_blank">{{ track_url }}</a></p>
+    </div>
+    <div class="card">
+      <h2>Update</h2>
+      <form method="post" action="/owner/orders/{{ o.id }}/status" class="row" style="margin-bottom:14px"><input type="hidden" name="csrf" value="{{ csrf }}">
+        {% for s in statuses %}<button class="btn small {% if s == o.status %}dark{% elif s == 'cancelled' %}danger{% endif %}" name="status" value="{{ s }}" {% if s == 'cancelled' %}onclick="return confirm('Cancel order #{{ o.id }}?')"{% endif %}>{{ s|capitalize }}</button>{% endfor %}
+      </form>
+      <form method="post" action="/owner/orders/{{ o.id }}/payment" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <span class="small">Payment ({{ 'cash' if o.payment_method == 'cash' else 'bank transfer' }}):</span>
+        {% for s, label in [('unpaid','Not paid'),('paid','Paid')] %}<button class="btn small {% if s == o.payment_status %}dark{% endif %}" name="payment_status" value="{{ s }}">{{ label }}</button>{% endfor %}
+      </form>
+      {% if o.payment_status == 'reported' %}<p class="alert info" style="margin:14px 0 0">The customer says they've paid. Check your bank, then press Paid.</p>{% endif %}
+      <p class="small faint" style="margin-top:12px">Moving an order to Cooking takes its ingredients out of stock (for dishes with a recipe).</p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Message the customer</h2>
+    <p class="small muted">Your own messages, filled in for this order. Tap to open WhatsApp with the text ready, or copy it.</p>
+    <form method="get" class="row" style="margin-bottom:14px"><input name="reason" value="{{ request.query_params.get('reason', 'high demand') }}" style="max-width:180px" aria-label="Delay reason"><input type="time" name="new_time" value="{{ request.query_params.get('new_time', '') }}" style="max-width:130px" aria-label="New time"><button class="btn small">Update delay message</button></form>
+    {% for k, label, txt, link in msgs %}
+    <details style="border-top:1px solid var(--line);padding:12px 0"><summary style="cursor:pointer;font-weight:700">{{ label }}</summary>
+      <pre class="msg" style="margin:10px 0">{{ txt }}</pre>
+      <div class="row"><a class="btn small primary" href="{{ link }}" target="_blank" rel="noopener">Open in WhatsApp</a><button class="btn small" type="button" onclick="navigator.clipboard.writeText(this.closest('details').querySelector('pre').textContent);this.textContent='Copied'">Copy</button></div>
+    </details>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

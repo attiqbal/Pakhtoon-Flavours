@@ -1,0 +1,36 @@
+{% extends "owner/_layout.html" %}
+{% from "owner/_macros.html" import order_row %}
+{% block title %}Today{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">{{ today_pretty }}</span><h1>Assalamu alaikum.<br><span class="thin">Here's your day.</span></h1></div>
+  <div class="row"><a class="btn" href="/owner/orders/new">Add a phone order</a><a class="btn primary" href="/kitchen">Open kitchen screen</a></div></div>
+
+{% if not st.accepting_orders %}<div class="alert info">Online ordering is paused. Customers can look but not order. <a href="/owner/settings">Turn it back on</a></div>{% endif %}
+
+<div class="grid four" style="margin-bottom:20px">
+  <div class="card stat"><div class="label">Orders today</div><div class="value">{{ today|length }}</div></div>
+  <div class="card stat"><div class="label">Tomorrow</div><div class="value">{{ tomorrow|length }}</div></div>
+  <div class="card stat"><div class="label">Next 7 days</div><div class="value">{{ upcoming }}</div></div>
+  <div class="card stat"><div class="label">Sales this month</div><div class="value">{{ money(month.sales) }}</div></div>
+</div>
+
+<div class="grid two" style="align-items:start">
+  <div class="stack">
+    <div class="card"><div class="row between"><h2>Today</h2><a class="ghost small" href="/kitchen">Kitchen</a></div>
+      {% for o in today %}{{ order_row(o) }}{% else %}<p class="muted">No orders today.</p>{% endfor %}</div>
+    <div class="card"><div class="row between"><h2>Tomorrow</h2><a class="ghost small" href="/owner/stock?start={{ tomorrow_date }}&end={{ tomorrow_date }}">Shopping list</a></div>
+      {% for o in tomorrow %}{{ order_row(o) }}{% else %}<p class="muted">No orders for tomorrow yet.</p>{% endfor %}</div>
+  </div>
+  <div class="stack">
+    {% if chats %}<div class="card sand"><h2>Customers waiting for you</h2>
+      {% for c in chats %}<a class="alert-row" href="/owner/inbox/{{ c.id }}"><b>{{ c.name or 'Customer' }}</b> <span class="faint">({{ c.channel }})</span></a>{% endfor %}</div>{% endif %}
+    <div class="card"><h2>Latest</h2>
+      {% for a in alerts %}<a class="alert-row {% if not a.seen %}new{% endif %}" href="{{ a.link or '#' }}">{{ a.text }}<div class="tiny faint">{{ a.created_at[:16].replace('T', ' ') }}</div></a>
+      {% else %}<p class="muted">New orders, payments and messages will show here.</p>{% endfor %}</div>
+    {% if unpaid %}<div class="card"><div class="row between"><h2>Waiting for payment</h2><a class="ghost small" href="/owner/orders?view=unpaid">All</a></div>
+      {% for o in unpaid[:6] %}{{ order_row(o) }}{% endfor %}</div>{% endif %}
+    {% if low %}<div class="card sage"><h2>Running low</h2>{% for i in low %}<div class="summary-line"><span>{{ i.name }}</span><b>{{ i.stock_txt }}</b></div>{% endfor %}
+      <a class="ghost small" href="/owner/stock">Stock</a></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Calendar{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Calendar</span><h1>{{ title }}</h1></div>
+  <div class="row"><a class="btn small" href="?month={{ prev }}">← Previous</a><a class="btn small" href="/owner/calendar">This month</a><a class="btn small" href="?month={{ next }}">Next →</a></div></div>
+<div class="scroll-x"><table class="cal">
+  <thead><tr>{% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for week in weeks %}<tr>{% for d in week %}
+    <td class="{% if not d.in_month %}out{% endif %} {% if d.today %}today{% endif %} {% if d.closed %}closed{% endif %}">
+      <div class="d"><span>{{ d.day }}</span>
+        <form method="post" action="/owner/calendar/close"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="day" value="{{ d.date }}"><input type="hidden" name="month" value="{{ request.query_params.get('month', '') }}">
+          <button class="closebtn" title="{{ 'Open this day for orders' if d.closed else 'Close this day for orders' }}">{{ 'closed · reopen' if d.closed else 'close' }}</button></form></div>
+      {% for o in d.orders[:4] %}<a class="o" href="/owner/orders/{{ o.id }}" title="#{{ o.id }} {{ o.customer_name }} {{ money(o.total) }}">{{ o.time }} {{ o.customer_name.split()[0] }}</a>{% endfor %}
+      {% if d.orders|length > 4 %}<a class="o" href="/owner/orders?search=" style="background:var(--lime)">+{{ d.orders|length - 4 }} more</a>{% endif %}
+    </td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>
+<div class="card sage" style="margin-top:24px">
+  <h2>See orders in your phone's calendar</h2>
+  <p>Subscribe to this link once and every order appears in Google Calendar or your iPhone calendar, updating by itself.</p>
+  <div class="row"><input readonly value="{{ feed }}" onclick="this.select()" style="flex:1;min-width:260px" aria-label="Calendar link"><button class="btn small" type="button" onclick="navigator.clipboard.writeText('{{ feed }}');this.textContent='Copied'">Copy link</button></div>
+  <p class="small muted" style="margin-top:12px"><b>Google Calendar:</b> on a computer, open calendar.google.com › Other calendars › + › From URL › paste the link.<br><b>iPhone:</b> Settings › Calendar › Accounts › Add Account › Other › Add Subscribed Calendar › paste the link.<br>Keep the link private: anyone with it can see your orders. You can make a new one in Settings.</p>
+</div>
+{% endblock %}

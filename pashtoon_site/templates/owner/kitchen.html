@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>Kitchen · {{ st.shop_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=1"><script>window.CSRF = "{{ csrf }}";</script></head>
+<body class="kds">
+<header>
+  <div><h1>Kitchen</h1><div class="small" style="color:#a9b3a5" id="day-label"></div></div>
+  <div class="row"><button class="daybtn on" data-day="0">Today</button><button class="daybtn" data-day="1">Tomorrow</button>
+    {% if owner %}<a class="daybtn" href="/owner" style="text-decoration:none">Dashboard</a>{% endif %}</div>
+  <div class="clock" id="clock"></div>
+</header>
+<div class="totals" id="totals" style="padding-top:14px"></div>
+<div class="cols">
+  <div class="col"><h2>To cook <span id="n-confirmed"></span></h2><div id="c-confirmed"></div></div>
+  <div class="col"><h2>Cooking <span id="n-cooking"></span></h2><div id="c-cooking"></div></div>
+  <div class="col"><h2>Ready <span id="n-ready"></span></h2><div id="c-ready"></div></div>
+</div>
+<script>
+(function () {
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  let offset = 0, known = null;
+  const next = { confirmed: ["cooking", "Start cooking"], cooking: ["ready", "Ready"], ready: ["completed", (o) => o.fulfilment === "delivery" ? "Out for delivery" : "Collected"] };
+  const prev = { cooking: "confirmed", ready: "cooking" };
+  function dayISO(off) { const d = new Date(); d.setDate(d.getDate() + off); return d.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); }
+  function tick() { document.getElementById("clock").textContent = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }); }
+  function ding() { try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 660; g.gain.setValueAtTime(.2, a.currentTime); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + .8); o.start(); o.stop(a.currentTime + .8); } catch (e) {} }
+  async function load() {
+    let j;
+    try { const r = await fetch("/api/kitchen?day=" + dayISO(offset)); if (r.status === 403) { location.href = "/owner/login?next=/kitchen"; return; } j = await r.json(); } catch (e) { return; }
+    document.getElementById("day-label").textContent = j.pretty;
+    const ids = j.orders.map((o) => o.id);
+    if (known && offset === 0 && ids.some((id) => !known.includes(id))) ding();
+    if (offset === 0) known = ids;
+    const nowHM = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
+    ["confirmed", "cooking", "ready"].forEach((s) => {
+      const list = j.orders.filter((o) => o.status === s);
+      document.getElementById("n-" + s).textContent = list.length;
+      document.getElementById("c-" + s).innerHTML = list.map((o) => {
+        const late = offset === 0 && s !== "ready" && o.time <= nowHM;
+        const label = typeof next[s][1] === "function" ? next[s][1](o) : next[s][1];
+        return `<div class="ticket ${late ? "late" : ""}">
+          <div class="top"><span class="num">#${o.id}</span><span class="when">${esc(o.time)}</span></div>
+          <div class="small" style="color:#a9b3a5">${esc(o.customer_name)} · ${esc(o.fulfilment)}${o.postcode ? " · " + esc(o.postcode) : ""}${o.payment_status !== "paid" ? " · <b style='color:#ffcf7a'>not paid</b>" : ""}</div>
+          <ul>${o.items.map((i) => `<li><b>${i.qty}×</b>${esc(i.dish)} <span style="color:#a9b3a5">· ${esc(i.portion)}</span></li>`).join("")}</ul>
+          ${o.notes ? `<div class="note">${esc(o.notes)}</div>` : ""}
+          <div class="acts">${prev[s] ? `<button class="back" data-id="${o.id}" data-s="${prev[s]}" aria-label="Move back">↶</button>` : ""}<button data-id="${o.id}" data-s="${next[s][0]}">${esc(label)}</button></div></div>`;
+      }).join("") || `<div class="empty">Nothing here</div>`;
+    });
+    document.getElementById("totals").innerHTML = j.totals.length ? "<span class='small' style='color:#a9b3a5;margin:0 6px'>Still to cook:</span>" + j.totals.map(([k, n]) => `<div><b>${n}×</b> ${esc(k)}</div>`).join("") : "";
+  }
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-id]");
+    if (b) {
+      b.disabled = true;
+      await fetch(`/api/kitchen/${b.dataset.id}/status`, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF": window.CSRF }, body: JSON.stringify({ status: b.dataset.s }) });
+      load();
+    }
+    const d = e.target.closest("button[data-day]");
+    if (d) { offset = Number(d.dataset.day); document.querySelectorAll("[data-day]").forEach((x) => x.classList.toggle("on", x === d)); load(); }
+  });
+  tick(); setInterval(tick, 10000); load(); setInterval(load, 15000);
+})();
+</script>
+</body></html>

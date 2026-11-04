@@ -1,0 +1,54 @@
+{% extends "public/_base.html" %}
+{% block page %}
+<section class="hero" style="background-image:url('/static/img/dampukh.jpg')">
+  <div class="hero-panel">
+    <span class="eyebrow">Traditional Khyber Pukhtunkhwa cuisine</span>
+    <h1>Slow-cooked,<br><span class="thin">the Peshawar way.</span></h1>
+    <p>Dam Pukh, Namkeen Gosht, Bannu Pulao and Raan Pulao, cooked at home to order. Pre-order online for collection or delivery.</p>
+    <div class="row"><a class="btn primary big" href="/menu">Order now</a><a class="ghost" href="#how">How pre-ordering works</a></div>
+    {% if not st.accepting_orders %}<p class="alert info" style="margin:18px 0 0">We're not taking new orders right now. Message us and we'll let you know when we reopen.</p>{% endif %}
+  </div>
+</section>
+
+<section class="band"><div class="wrap">
+  <div class="row between" style="align-items:flex-end;margin-bottom:30px"><div><span class="eyebrow">From the menu</span><h2>Made to order,<br><span class="thin">made with patience</span></h2></div>
+    <a class="ghost" href="/menu">See the full menu</a></div>
+  <div class="cards">
+    {% for it in featured[:6] %}
+    <a class="dish" href="/menu#{{ it.slug }}" style="text-decoration:none">
+      {% if it.category == 'special' %}<span class="badge-lime">48 hours' notice</span>{% endif %}
+      <img src="/static/img/{{ it.image }}" alt="{{ it.name }}" loading="lazy">
+      <div class="body"><h3>{{ it.name }}</h3><p>{{ it.description }}</p>
+        <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b></p><span class="ghost">Order now</span></div>
+    </a>
+    {% endfor %}
+  </div>
+</div></section>
+
+<section class="band sage" id="how"><div class="wrap">
+  <span class="eyebrow">How it works</span><h2>Order a day ahead.<br><span class="thin">We cook it fresh.</span></h2>
+  <div class="steps">
+    <div><div class="n">1</div><h3>Choose your dishes</h3><p class="muted">Per person or family portions. Add nan, chutney, salad and kheer.</p></div>
+    <div><div class="n">2</div><h3>Pick a day and time</h3><p class="muted">At least 24 hours ahead, 48 hours for Raan Pulao. Collection or delivery.</p></div>
+    <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">Bank transfer or cash on collection or delivery. You'll get your order number straight away.</p></div>
+    <div><div class="n">4</div><h3>Questions?</h3><p class="muted">Chat with us here any time, or on WhatsApp {{ st.whatsapp }}.</p></div>
+  </div>
+</div></section>
+
+<section class="band sand" id="delivery"><div class="wrap split">
+  <div>
+    <span class="eyebrow">Collection and delivery</span><h2>Collect from {{ st.kitchen_postcode }}<br><span class="thin">or we'll bring it to you.</span></h2>
+    {% if st.offers_delivery %}<p><b>Delivery charges</b></p>{% for b in bands %}<div class="summary-line">{{ b }}</div>{% endfor %}{% endif %}
+    <p class="small muted" style="margin-top:14px">Cancellations need at least 24 hours' notice. For late cancellations or no-shows we may not be able to offer a full refund, as ingredients and cooking will already have started.</p>
+    <a class="btn primary" href="/menu">Start your order</a>
+  </div>
+  <img src="/static/img/raan.jpg" alt="Peshawari Raan Pulao" loading="lazy">
+</div></section>
+
+<section class="band"><div class="wrap split">
+  <img src="/static/img/khyber.jpg" alt="Khyber Pass gate" loading="lazy">
+  <div><span class="eyebrow">Our kitchen</span><h2>A taste of<br><span class="thin">Khyber Pukhtunkhwa</span></h2>
+    <p class="muted">The Pashtoon Flavours is a small family kitchen cooking the dishes we grew up with: Namkeen Gosht inspired by Peshawar's Namak Mandi, kheer from the lanes of Qissa Khwani Bazaar, and pulao from Bannu. Every order is cooked fresh for you.</p>
+    <a class="ghost" href="https://instagram.com/{{ st.instagram }}">Follow @{{ st.instagram }}</a></div>
+</div></section>
+{% endblock %}

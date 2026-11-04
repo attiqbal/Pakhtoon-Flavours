@@ -1,0 +1,38 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Phone order{% endblock %}
+{% set f = form or {} %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Orders</span><h1>Add a phone order</h1></div></div>
+<form method="post" class="grid two" style="align-items:start"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="card">
+    <h2>Dishes</h2>
+    {% for key, label, items in sections %}<h3 style="margin-top:14px">{{ label.split(' · ')[0] }}</h3>
+      {% for it in items %}{% for o in it.options %}
+      <div class="opt"><span class="lbl">{{ it.name }} <span class="faint small">({{ o.label }}) {{ money(o.price) }}</span></span>
+        <input type="number" name="qty_{{ o.id }}" min="0" max="50" value="{{ f['qty_' ~ o.id] or '' }}" style="max-width:80px" aria-label="{{ it.name }} {{ o.label }}"></div>
+      {% endfor %}{% endfor %}
+    {% endfor %}
+  </div>
+  <div class="stack">
+    <div class="card">
+      <div class="field"><label>Customer name</label><input name="name" value="{{ f.name or '' }}" required></div>
+      <div class="field"><label>Mobile</label><input type="tel" name="phone" value="{{ f.phone or '' }}" required></div>
+      <div class="grid two" style="gap:12px">
+        <div class="field"><label>Date</label><input type="date" name="date" value="{{ f.date or '' }}" required></div>
+        <div class="field"><label>Time</label><select name="time">{% for s in slots %}<option {% if f.time == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="field"><label>Collection or delivery</label><div class="choice">
+        <label><input type="radio" name="fulfilment" value="collection" {% if f.fulfilment != 'delivery' %}checked{% endif %}><span>Collection</span></label>
+        <label><input type="radio" name="fulfilment" value="delivery" {% if f.fulfilment == 'delivery' %}checked{% endif %}><span>Delivery</span></label></div></div>
+      <div class="field"><label>Address (for delivery)</label><input name="address" value="{{ f.address or '' }}"></div>
+      <div class="field"><label>Postcode (for delivery)</label><input name="postcode" value="{{ f.postcode or '' }}" style="max-width:200px"></div>
+      <div class="field"><label>Payment</label><div class="choice">
+        <label><input type="radio" name="payment" value="cash" {% if f.payment != 'bank' %}checked{% endif %}><span>Cash</span></label>
+        <label><input type="radio" name="payment" value="bank" {% if f.payment == 'bank' %}checked{% endif %}><span>Bank transfer</span></label></div></div>
+      <div class="field"><label>Notes</label><textarea name="notes" rows="2">{{ f.notes or '' }}</textarea></div>
+      <p class="small faint">The same notice, closed-day and daily-limit rules as the website apply.</p>
+      <button class="btn primary block">Add order</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
