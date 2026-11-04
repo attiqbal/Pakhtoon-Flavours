@@ -21,19 +21,29 @@ def order_confirmation(o: dict) -> str:
     else:
         lines.append(f"• Collection from: {setting('kitchen_postcode')}")
     lines += ["", f"Total amount: {money(o['total'])}",
-              f"Payment method: {'Cash' if o['payment_method'] == 'cash' else 'Bank transfer'}", "",
+              f"Payment method: {payment_label(o)}", "",
               "Please let us know as soon as possible if there are any changes.", "",
               "We look forward to serving you and hope you enjoy your meal 😊"]
     return "\n".join(lines)
 
 
+def payment_label(o: dict) -> str:
+    return {"card": "Card (paid online)", "cash": "Cash on collection/delivery", "bank": "Bank transfer"}.get(o["payment_method"], o["payment_method"])
+
+
 def payment_request(o: dict) -> str:
-    bank = setting("bank_details") or "(we'll send our bank details on WhatsApp)"
+    from . import config
+    if o["payment_method"] == "card":
+        how = f"• Card, Apple Pay or Google Pay on your order page:\n{config.BASE_URL}/o/{o['code']}"
+    elif o["payment_method"] == "bank":
+        how = "• Bank transfer to:\n" + (setting("bank_details") or "(we'll send our bank details on WhatsApp)")
+    else:
+        how = "• Cash on collection/delivery"
     return (f"Thank you for confirming your order with {brand()} 🌟\n\n"
             f"Your total amount is {money(o['total'])}.\n\n"
-            f"Payment can be made by:\n• Bank transfer to:\n{bank}\n• Or cash on collection/delivery\n\n"
-            "Please confirm once payment has been made so we can proceed with preparing your order.\n\n"
-            "Many thanks for your support 😊")
+            f"Payment can be made by:\n{how}\n\n"
+            + ("Please confirm once payment has been made so we can proceed with preparing your order.\n\n" if o["payment_method"] != "cash" else "")
+            + "Many thanks for your support 😊")
 
 
 def cancellation_policy() -> str:

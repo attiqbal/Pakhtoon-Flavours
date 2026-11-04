@@ -50,10 +50,9 @@
       <div class="card">
         <h2>Payment</h2>
         <div class="choice" style="margin-bottom:10px">
-          <label><input type="radio" name="payment" value="bank" {% if f.payment != 'cash' %}checked{% endif %}><span>Bank transfer</span></label>
-          <label><input type="radio" name="payment" value="cash" {% if f.payment == 'cash' %}checked{% endif %}><span>Cash</span></label>
+          {% for m, lbl in pay_methods %}<label><input type="radio" name="payment" value="{{ m }}" {% if f.payment == m or (not f.payment and loop.first) %}checked{% endif %}><span>{{ lbl }}</span></label>{% endfor %}
         </div>
-        <p class="small muted">Nothing to pay online now. For bank transfer you'll see our details on the next page; we start cooking once payment is confirmed.</p>
+        <p class="small muted">{% if pay_methods|selectattr(0, 'equalto', 'card')|list %}Card payments open Stripe's secure page, where Apple Pay and Google Pay work too. {% endif %}{% if pay_methods|selectattr(0, 'equalto', 'cash')|list %}Cash is paid when you collect or when we deliver.{% endif %}</p>
         <label class="check"><input type="checkbox" name="agree" value="1" required><span class="small">I understand cancellations need at least 24 hours' notice, and late cancellations may not get a full refund.</span></label>
         <button class="btn primary big block" type="submit" style="margin-top:18px" {% if not st.accepting_orders %}disabled{% endif %}>Place order</button>
       </div>

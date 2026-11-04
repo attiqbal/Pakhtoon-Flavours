@@ -9,19 +9,20 @@ from datetime import date, timedelta
 from urllib.parse import quote as urlquote
 
 import bcrypt
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import agent, config, db, menu_data, messages, shop, whatsapp
+from . import agent, config, db, menu_data, messages, meta, payments, shop
 from .shop import ShopError
 
 log = logging.getLogger(__name__)
 HERE = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
-templates.env.globals.update(money=shop.money, menu_categories=menu_data.CATEGORIES, statuses=shop.STATUSES, wa=shop.wa_number)
+templates.env.globals.update(money=shop.money, menu_categories=menu_data.CATEGORIES, statuses=shop.STATUSES, wa=shop.wa_number,
+                              pay_label=payments.label, image_url=lambda img: img if (img or '').startswith('/') else f'/static/img/{img}')
 
 
 # ---------------------------------------------------------------- small helpers
@@ -97,6 +98,26 @@ def _float(x, default=None):
         return default
 
 
+IMAGE_TYPES = {b"\xff\xd8\xff": "jpg", b"\x89PNG": "png", b"RIFF": "webp"}
+MAX_PHOTO = 8 * 1024 * 1024
+
+
+async def save_photo(upload) -> str | None:
+    """A dish photo from the owner: checked to really be a JPEG, PNG or WebP, then kept in data/uploads."""
+    if not upload or not getattr(upload, "filename", ""):
+        return None
+    data = await upload.read(MAX_PHOTO + 1)
+    if len(data) > MAX_PHOTO:
+        raise ShopError("That photo is too big. Please use one under 8 MB.")
+    ext = next((e for magic, e in IMAGE_TYPES.items() if data.startswith(magic)), None)
+    if not ext or (ext == "webp" and data[8:12] != b"WEBP"):
+        raise ShopError("Please upload a JPEG, PNG or WebP photo.")
+    name = f"dish-{secrets.token_hex(8)}.{ext}"
+    with open(os.path.join(config.UPLOAD_DIR, name), "wb") as fh:
+        fh.write(data)
+    return f"/media/{name}"
+
+
 def wa_link(phone: str, text: str) -> str:
     return f"https://wa.me/{shop.wa_number(phone)}?text={urlquote(text)}"
 
@@ -115,6 +136,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), session_cookie="pf_session", same_site="lax",
                        https_only=config.BASE_URL.startswith("https"), max_age=60 * 60 * 24 * 30)
     app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+    os.makedirs(config.UPLOAD_DIR, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=config.UPLOAD_DIR), name="media")
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException):
@@ -142,7 +165,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def checkout_page(request: Request):
         d = shop.now().date()
         return render(request, "public/checkout.html", slots=shop.time_slots(), min_date=(d + timedelta(days=1)).isoformat(),
-                      max_date=(d + timedelta(days=90)).isoformat(), bands=shop.delivery_bands_text().splitlines())
+                      max_date=(d + timedelta(days=90)).isoformat(), bands=shop.delivery_bands_text().splitlines(),
+                      pay_methods=payments.methods())
 
     def _cart(raw: str) -> list[dict]:
         try:
@@ -165,14 +189,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.post("/checkout")
     async def checkout(request: Request, cart: str = Form(""), name: str = Form(""), phone: str = Form(""), email: str = Form(""),
                        fulfilment: str = Form("collection"), address: str = Form(""), postcode: str = Form(""),
-                       date_: str = Form("", alias="date"), time_: str = Form("", alias="time"), payment: str = Form("bank"),
+                       date_: str = Form("", alias="date"), time_: str = Form("", alias="time"), payment: str = Form(""),
                        notes: str = Form(""), agree: str = Form("")):
         await check_csrf(request)
         form = dict(name=name, phone=phone, email=email, fulfilment=fulfilment, address=address, postcode=postcode,
                     date=date_, time=time_, payment=payment, notes=notes)
         d = shop.now().date()
         page = dict(slots=shop.time_slots(), min_date=(d + timedelta(days=1)).isoformat(),
-                    max_date=(d + timedelta(days=90)).isoformat(), bands=shop.delivery_bands_text().splitlines(), form=form)
+                    max_date=(d + timedelta(days=90)).isoformat(), bands=shop.delivery_bands_text().splitlines(), form=form,
+                    pay_methods=payments.methods())
         if not allow(f"checkout:{ip(request)}", 12, 3600):
             return render(request, "public/checkout.html", error="Too many orders from here in a short time. Please message us.", **page)
         try:
@@ -183,6 +208,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
             return render(request, "public/checkout.html", error=str(e), **page)
         request.session.setdefault("my_orders", [])
         request.session["my_orders"] = (request.session["my_orders"] + [o["code"]])[-10:]
+        if o["payment_method"] == "card":
+            try:
+                return RedirectResponse(payments.create_checkout(o), status_code=303)
+            except RuntimeError:
+                log.exception("card checkout failed for order %s", o["id"])
+                return back(f"/o/{o['code']}?new=1", error="Your order is placed, but the card payment page didn't open. Press Pay now to try again.")
         return RedirectResponse(f"/o/{o['code']}?new=1", status_code=303)
 
     @app.get("/o/{code}", response_class=HTMLResponse)
@@ -190,7 +221,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         o = shop.get_order_by_code(code)
         if not o:
             raise HTTPException(404, "We couldn't find that order.")
-        return render(request, "public/order.html", o=o, new=request.query_params.get("new") == "1",
+        sid = request.query_params.get("stripe_session")
+        if sid and o["payment_status"] != "paid":
+            if payments.paid_order_id(sid) == o["id"]:
+                shop.mark_card_paid(o["id"])
+                o = shop.get_order_by_code(code)
+        return render(request, "public/order.html", o=o, new=request.query_params.get("new") == "1" or bool(sid),
+                      card_ready=payments.card_enabled(), paid_now=bool(sid) and o["payment_status"] == "paid",
                       can_cancel=o["status"] == "confirmed" and shop.hours_until(o) >= 24,
                       confirmation=messages.order_confirmation(o), payment_msg=messages.payment_request(o),
                       policy=messages.cancellation_policy())
@@ -203,6 +240,39 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(404, "We couldn't find that order.")
         shop.report_payment(o["id"])
         return back(f"/o/{code}", "Thank you! We'll check and confirm your payment.")
+
+    @app.post("/o/{code}/pay")
+    async def track_pay(request: Request, code: str):
+        await check_csrf(request)
+        o = shop.get_order_by_code(code)
+        if not o:
+            raise HTTPException(404, "We couldn't find that order.")
+        if o["payment_status"] == "paid" or o["status"] == "cancelled" or not payments.card_enabled():
+            return back(f"/o/{code}", error="This order can't be paid online.")
+        if not allow(f"pay:{ip(request)}", 20, 3600):
+            return back(f"/o/{code}", error="Please wait a little and try again.")
+        try:
+            return RedirectResponse(payments.create_checkout(o), status_code=303)
+        except RuntimeError:
+            return back(f"/o/{code}", error="The card payment page didn't open. Please try again in a minute, or pay cash.")
+
+    @app.post("/webhook/stripe")
+    async def stripe_webhook(request: Request):
+        body = await request.body()
+        if not payments.webhook_ok(body, request.headers.get("stripe-signature", "")):
+            raise HTTPException(400, "Bad signature")
+        ev = json.loads(body or b"{}")
+        obj = (ev.get("data") or {}).get("object") or {}
+        if ev.get("type") in ("checkout.session.completed", "checkout.session.async_payment_succeeded") and obj.get("payment_status") == "paid":
+            try:
+                shop.mark_card_paid(int((obj.get("metadata") or {}).get("order_id")))
+            except (TypeError, ValueError, ShopError):
+                log.warning("Stripe event for unknown order: %s", obj.get("id"))
+        return {"ok": True}
+
+    @app.get("/privacy", response_class=HTMLResponse)
+    def privacy(request: Request):
+        return render(request, "public/privacy.html")
 
     @app.post("/o/{code}/cancel")
     async def track_cancel(request: Request, code: str):
@@ -249,27 +319,44 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(404, "Not found")
         return Response(shop.ics_feed(), media_type="text/calendar; charset=utf-8")
 
+    _seen_ids: deque = deque(maxlen=2000)
+
+    def _handle_meta(items: list[dict]) -> None:
+        for m in items:
+            conv = db.q1("SELECT * FROM conversations WHERE channel=? AND contact=? ORDER BY id DESC LIMIT 1", (m["channel"], m["from"]))
+            conv = conv or agent.new_conversation(m["channel"], m["from"], m["name"])
+            if not allow(f"meta:{m['channel']}:{m['from']}", 40, 3600):
+                continue
+            reply = agent.customer_message(conv, m["text"])
+            if reply and not meta.send_text(m["channel"], m["from"], reply):
+                shop.alert("message", f"A reply on {meta.CHANNELS[m['channel']]} couldn't be sent. Check the Meta settings.", f"/owner/inbox/{conv['id']}")
+
+    @app.get("/webhook/meta")
     @app.get("/webhook/whatsapp")
-    def wa_verify(request: Request):
+    def meta_verify(request: Request):
         p = request.query_params
-        if config.WHATSAPP_VERIFY_TOKEN and p.get("hub.mode") == "subscribe" and \
-                secrets.compare_digest(p.get("hub.verify_token", ""), config.WHATSAPP_VERIFY_TOKEN):
+        if config.META_VERIFY_TOKEN and p.get("hub.mode") == "subscribe" and \
+                secrets.compare_digest(p.get("hub.verify_token", ""), config.META_VERIFY_TOKEN):
             return PlainTextResponse(p.get("hub.challenge", ""))
         raise HTTPException(403, "Forbidden")
 
+    @app.post("/webhook/meta")
     @app.post("/webhook/whatsapp")
-    async def wa_inbound(request: Request):
+    async def meta_inbound(request: Request, tasks: BackgroundTasks):
         body = await request.body()
-        if not whatsapp.signature_ok(body, request.headers.get("x-hub-signature-256", "")):
+        if not meta.signature_ok(body, request.headers.get("x-hub-signature-256", "")):
             raise HTTPException(403, "Bad signature")
-        for m in whatsapp.parse(json.loads(body or b"{}")):
-            conv = db.q1("SELECT * FROM conversations WHERE channel='whatsapp' AND contact=? ORDER BY id DESC LIMIT 1", (m["from"],))
-            conv = conv or agent.new_conversation("whatsapp", m["from"], m["name"])
-            if not allow(f"wa:{m['from']}", 40, 3600):
+        try:
+            items = meta.parse(json.loads(body or b"{}"))
+        except ValueError:
+            raise HTTPException(400, "Bad JSON") from None
+        fresh = []
+        for m in items:          # Meta retries deliveries; answer each message once
+            if m["id"] and m["id"] in _seen_ids:
                 continue
-            reply = agent.customer_message(conv, m["text"])
-            if reply:
-                whatsapp.send_text(m["from"], reply)
+            _seen_ids.append(m["id"])
+            fresh.append(m)
+        tasks.add_task(_handle_meta, fresh)      # reply after answering Meta, so it doesn't time out and retry
         return {"ok": True}
 
     # ------------------------------------------------------------ owner: login
@@ -548,6 +635,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
                         txt = f.get(f"recipe_{opt['id']}")
                         if txt is not None and txt.strip() != shop.recipe_text(opt["id"]).strip():
                             shop.set_recipe(opt["id"], txt)
+            photo = await save_photo(f.get("photo"))
+            if photo:
+                db.execute("UPDATE menu_items SET image=? WHERE id=?", (photo, new_id))
+            elif f.get("remove_photo"):
+                db.execute("UPDATE menu_items SET image=NULL WHERE id=?", (new_id,))
         except (ShopError, ValueError) as e:
             return back(f"/owner/menu/{item_id}", error=str(e))
         return back(f"/owner/menu/{new_id}", "Saved.")
@@ -629,7 +721,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/owner/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
         need_owner(request)
-        return render(request, "owner/settings.html", ai_on=agent.configured(), wa_on=whatsapp.enabled(),
+        return render(request, "owner/settings.html", ai_on=agent.configured(), meta_status=meta.status(), meta_channels=meta.CHANNELS,
+                      stripe_on=payments.configured(), stripe_webhook=bool(config.STRIPE_WEBHOOK_SECRET),
+                      meta_callback=f"{config.BASE_URL}/webhook/meta", stripe_callback=f"{config.BASE_URL}/webhook/stripe",
                       kitchen_link=f"{config.BASE_URL}/kitchen?key={db.get_setting('kitchen_token')}",
                       feed=f"{config.BASE_URL}/calendar/{db.get_setting('calendar_token')}.ics")
 
@@ -644,7 +738,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
             for k in text_keys:
                 if k in f:
                     db.set_setting(k, f.get(k, "").strip()[:600])
-            for k in ("accepting_orders", "offers_delivery", "offers_collection", "ai_enabled"):
+            if not (f.get("pay_cash") or f.get("pay_bank") or f.get("pay_card")):
+                raise ShopError("Keep at least one way to pay switched on.")
+            for k in ("accepting_orders", "offers_delivery", "offers_collection", "ai_enabled", "pay_cash", "pay_bank", "pay_card"):
                 db.set_setting(k, bool(f.get(k)))
             db.set_setting("slot_start", shop.parse_time(f.get("slot_start", "12:00")))
             db.set_setting("slot_end", shop.parse_time(f.get("slot_end", "21:00")))

@@ -57,6 +57,9 @@ DEFAULT_SETTINGS = {
     "daily_order_limit": 0,           # 0 = no limit
     "closed_dates": [],
     "bank_details": "",
+    "pay_cash": True,                 # she takes cash for now
+    "pay_bank": False,                # switch on when she takes bank transfers
+    "pay_card": True,                 # only works once STRIPE_SECRET_KEY is set
     "review_link": "",
     "announcement": "",
     "ai_enabled": True,

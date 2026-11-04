@@ -9,7 +9,7 @@
       <label class="check"><input type="checkbox" name="accepting_orders" value="1" {% if st.accepting_orders %}checked{% endif %}> Taking orders online</label>
       <label class="check"><input type="checkbox" name="offers_collection" value="1" {% if st.offers_collection %}checked{% endif %}> Collection</label>
       <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery</label>
-      <div class="grid three" style="gap:10px">
+      <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))">
         <div class="field"><label>First time</label><input type="time" name="slot_start" value="{{ st.slot_start }}"></div>
         <div class="field"><label>Last time</label><input type="time" name="slot_end" value="{{ st.slot_end }}"></div>
         <div class="field"><label>Every (min)</label><input type="number" name="slot_minutes" min="5" value="{{ st.slot_minutes }}"></div>
@@ -21,7 +21,7 @@
       <h2>Delivery charges</h2>
       <p class="small muted">Distance is measured in a straight line from your collection postcode.</p>
       {% for i in range(3) %}{% set b = st.delivery_bands[i] if i < st.delivery_bands|length else none %}
-      <div class="grid three" style="gap:10px">
+      <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))">
         <div class="field"><label>Up to miles</label><input name="band_miles_{{ i }}" value="{{ ('%g'|format(b[0])) if b and b[0] is not none else '' }}" placeholder="{{ 'any distance' if b else '' }}"></div>
         <div class="field"><label>Charge £</label><input name="band_fee_{{ i }}" value="{{ ('%.2f'|format(b[1])) if b else '' }}"></div>
         <div class="field"><label>Minimum order £</label><input name="band_min_{{ i }}" value="{{ ('%g'|format(b[2])) if b and b[2] else '' }}"></div>
@@ -32,6 +32,10 @@
   <div class="stack">
     <div class="card">
       <h2>Payments</h2>
+      <label class="check"><input type="checkbox" name="pay_cash" value="1" {% if st.pay_cash %}checked{% endif %}> Cash on collection or delivery</label>
+      <label class="check"><input type="checkbox" name="pay_bank" value="1" {% if st.pay_bank %}checked{% endif %}> Bank transfer</label>
+      <label class="check" style="margin-bottom:6px"><input type="checkbox" name="pay_card" value="1" {% if st.pay_card %}checked{% endif %}> Card, Apple Pay and Google Pay (Stripe)</label>
+      <p class="small {% if stripe_on %}muted{% endif %}" style="margin:0 0 14px 30px">{% if stripe_on %}Stripe is connected{% if not stripe_webhook %}; add STRIPE_WEBHOOK_SECRET so payments are confirmed even if a customer closes the page{% endif %}.{% else %}<b>Not connected yet.</b> Card payments appear for customers once STRIPE_SECRET_KEY is in the .env file. Apple Pay and Google Pay are switched on in the Stripe dashboard.{% endif %}</p>
       <div class="field"><label>Bank details for transfers</label><textarea name="bank_details" rows="3" placeholder="Name: …&#10;Sort code: …&#10;Account: …">{{ st.bank_details }}</textarea><div class="hint">Shown to customers who choose bank transfer.</div></div>
       <div class="field"><label>Review link (Google or similar)</label><input name="review_link" value="{{ st.review_link }}"></div>
     </div>
@@ -41,19 +45,30 @@
       <div class="field"><label>Tagline</label><input name="tagline" value="{{ st.tagline }}"></div>
       <div class="grid two" style="gap:10px"><div class="field"><label>Collection postcode</label><input name="kitchen_postcode" value="{{ st.kitchen_postcode }}"></div>
         <div class="field"><label>Area</label><input name="area" value="{{ st.area }}"></div></div>
-      <div class="grid three" style="gap:10px"><div class="field"><label>WhatsApp</label><input name="whatsapp" value="{{ st.whatsapp }}"></div>
+      <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))"><div class="field"><label>WhatsApp</label><input name="whatsapp" value="{{ st.whatsapp }}"></div>
         <div class="field"><label>Instagram</label><input name="instagram" value="{{ st.instagram }}"></div><div class="field"><label>TikTok</label><input name="tiktok" value="{{ st.tiktok }}"></div></div>
     </div>
     <div class="card">
       <h2>AI assistant</h2>
       <p class="small">{% if ai_on %}Connected.{% else %}<b>Not connected yet.</b> Add your ANTHROPIC_API_KEY to the .env file and restart; until then customers' chat messages come to Messages for you to answer.{% endif %}
-        {% if wa_on %} WhatsApp is connected too.{% endif %}</p>
+</p>
       <label class="check"><input type="checkbox" name="ai_enabled" value="1" {% if st.ai_enabled %}checked{% endif %}> Let the assistant answer customers</label>
       <div class="field" style="margin-top:12px"><label>Assistant's name</label><input name="assistant_name" value="{{ st.assistant_name }}" style="max-width:200px"><div class="hint">It always tells customers it is an AI assistant.</div></div>
     </div>
     <button class="btn primary big block">Save settings</button>
   </div>
 </form>
+
+<div class="card" style="margin-top:24px">
+  <h2>WhatsApp, Instagram and Facebook Messenger</h2>
+  <p class="small muted">The same assistant answers customers on Meta's apps, and their chats appear in Messages. Each one switches on when its keys are in the .env file (see the README's Meta section).</p>
+  <div class="grid three" style="gap:10px;margin-bottom:14px">
+    {% for key, name in meta_channels.items() %}<div class="card {{ 'sage' if meta_status[key] else 'sand' }}" style="padding:16px"><b>{{ name }}</b><div class="small">{{ 'Connected' if meta_status[key] else 'Not connected' }}</div></div>{% endfor %}
+  </div>
+  <div class="field"><label>Callback URL for the Meta app's webhooks</label><input readonly value="{{ meta_callback }}" onclick="this.select()" aria-label="Callback URL"></div>
+  <p class="small">{% if meta_status.webhook_ready %}Webhook keys are set (META_APP_SECRET and META_VERIFY_TOKEN).{% else %}<b>Webhook not ready:</b> set META_APP_SECRET and META_VERIFY_TOKEN in .env, then use the same verify token in the Meta app.{% endif %}
+    Privacy policy URL for the Meta app: <a href="/privacy" target="_blank">{{ base_url }}/privacy</a>{% if stripe_on %} · Stripe webhook URL: {{ stripe_callback }}{% endif %}</p>
+</div>
 
 <div class="grid two" style="align-items:start;margin-top:24px">
   <div class="card sage">

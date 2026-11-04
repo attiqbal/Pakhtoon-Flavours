@@ -14,7 +14,7 @@
       {% for it in items %}
       <article class="dish" id="{{ it.slug }}">
         {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
-        {% if it.image %}<img src="/static/img/{{ it.image }}" alt="{{ it.name }}" loading="lazy">{% else %}<div class="noimg">{{ it.name }}</div>{% endif %}
+        {% if it.image %}<img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">{% else %}<div class="noimg">{{ it.name }}</div>{% endif %}
         <div class="body">
           <h3>{{ it.name }}</h3><p>{{ it.description }}</p>
           <div class="opts">

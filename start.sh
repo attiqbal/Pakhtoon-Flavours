@@ -13,6 +13,7 @@ touch .env && chmod 600 .env
 add_default() { grep -q "^$1=" .env || printf '%s=%s\n' "$1" "$2" >> .env; }
 add_default OWNER_PASSWORD "$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 12)"
 add_default ANTHROPIC_API_KEY ""
+add_default META_VERIFY_TOKEN "$(openssl rand -hex 12)"
 value() { grep "^$1=" .env | head -1 | cut -d= -f2-; }
 
 set -a; . ./.env; set +a

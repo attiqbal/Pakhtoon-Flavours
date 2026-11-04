@@ -28,7 +28,8 @@
       <div class="field"><label>Postcode (for delivery)</label><input name="postcode" value="{{ f.postcode or '' }}" style="max-width:200px"></div>
       <div class="field"><label>Payment</label><div class="choice">
         <label><input type="radio" name="payment" value="cash" {% if f.payment != 'bank' %}checked{% endif %}><span>Cash</span></label>
-        <label><input type="radio" name="payment" value="bank" {% if f.payment == 'bank' %}checked{% endif %}><span>Bank transfer</span></label></div></div>
+        <label><input type="radio" name="payment" value="bank" {% if f.payment == 'bank' %}checked{% endif %}><span>Bank transfer</span></label>
+        <label><input type="radio" name="payment" value="card" {% if f.payment == 'card' %}checked{% endif %}><span>Card (pay link)</span></label></div></div>
       <div class="field"><label>Notes</label><textarea name="notes" rows="2">{{ f.notes or '' }}</textarea></div>
       <p class="small faint">The same notice, closed-day and daily-limit rules as the website apply.</p>
       <button class="btn primary block">Add order</button>

@@ -1,6 +1,7 @@
 {% extends "public/_base.html" %}
 {% block page %}
-<section class="hero" style="background-image:url('/static/img/dampukh.jpg')">
+{% set hero = featured[0] if featured else none %}
+<section class="hero" style="background-image:url('{{ image_url(hero.image) if hero else '/static/img/dampukh.jpg' }}')">
   <div class="hero-panel">
     <span class="eyebrow">Traditional Khyber Pukhtunkhwa cuisine</span>
     <h1>Slow-cooked,<br><span class="thin">the Peshawar way.</span></h1>
@@ -17,7 +18,7 @@
     {% for it in featured[:6] %}
     <a class="dish" href="/menu#{{ it.slug }}" style="text-decoration:none">
       {% if it.category == 'special' %}<span class="badge-lime">48 hours' notice</span>{% endif %}
-      <img src="/static/img/{{ it.image }}" alt="{{ it.name }}" loading="lazy">
+      <img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">
       <div class="body"><h3>{{ it.name }}</h3><p>{{ it.description }}</p>
         <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b></p><span class="ghost">Order now</span></div>
     </a>
@@ -30,7 +31,7 @@
   <div class="steps">
     <div><div class="n">1</div><h3>Choose your dishes</h3><p class="muted">Per person or family portions. Add nan, chutney, salad and kheer.</p></div>
     <div><div class="n">2</div><h3>Pick a day and time</h3><p class="muted">At least 24 hours ahead, 48 hours for Raan Pulao. Collection or delivery.</p></div>
-    <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">Bank transfer or cash on collection or delivery. You'll get your order number straight away.</p></div>
+    <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">Cash on collection or delivery{% if st.pay_card %}, or card, Apple Pay and Google Pay online{% endif %}. You'll get your order number straight away.</p></div>
     <div><div class="n">4</div><h3>Questions?</h3><p class="muted">Chat with us here any time, or on WhatsApp {{ st.whatsapp }}.</p></div>
   </div>
 </div></section>

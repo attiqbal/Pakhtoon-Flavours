@@ -58,7 +58,7 @@ CUSTOMER_TOOLS = [
           ["items", "fulfilment", "date", "time"]),
     _tool("place_order", "Place the order. Only after the customer has clearly confirmed the quoted total.",
           {"items": LINES, "fulfilment": {"type": "string", "enum": ["collection", "delivery"]}, "date": S, "time": S,
-           "name": S, "phone": S, "address": S, "postcode": S, "payment_method": {"type": "string", "enum": ["bank", "cash"]},
+           "name": S, "phone": S, "address": S, "postcode": S, "payment_method": {"type": "string", "enum": ["card", "cash", "bank"], "description": "Only a method the menu info says is accepted."},
            "notes": S}, ["items", "fulfilment", "date", "time", "name", "phone", "payment_method"]),
     _tool("order_status", "Status of an order. Needs the order number and the phone number it was placed with.",
           {"order_id": I, "phone": S}, ["order_id", "phone"]),
@@ -104,8 +104,10 @@ def _menu_text(with_ids: bool = False) -> str:
                 out.append(f"    · {o['label']}: £{o['price']:.2f}" + (f" [option {o['id']}]" if with_ids else ""))
     st = shop.settings()
     out.append(f"\nDelivery from {st['kitchen_postcode']}:\n{shop.delivery_bands_text()}")
+    from . import payments
     out.append(f"Collection from {st['kitchen_postcode']}. Cooking times {st['slot_start']} to {st['slot_end']}. "
-               "Payment by bank transfer or cash. Cancellations need 24 hours' notice.")
+               f"Payment accepted: {'; '.join(f'{lbl} (payment_method {m})' for m, lbl in payments.methods())}. "
+               "Cancellations need 24 hours' notice.")
     return "\n".join(out)
 
 
@@ -166,13 +168,15 @@ def _run(ctx: Ctx, name: str, a: dict) -> str:
         conv = ctx.conversation or {}
         o = shop.place_order(_lines(a["items"]), a["name"], a["phone"], a["fulfilment"], a["date"], a["time"],
                              a["payment_method"], a.get("address", ""), a.get("postcode", ""), notes=a.get("notes", ""),
-                             source="whatsapp" if conv.get("channel") == "whatsapp" else "chat")
+                             source=conv.get("channel") if conv.get("channel") in ("whatsapp", "instagram", "messenger") else "chat")
         if conv.get("id"):
             execute("UPDATE conversations SET name=COALESCE(name,?) WHERE id=?", (o["customer_name"], conv["id"]))
         bank = shop.setting("bank_details")
         return (f"Placed. Order number {o['id']}, total £{o['total']:.2f}. Tracking link: {config.BASE_URL}/o/{o['code']}. "
                 + (f"Bank details for transfer: {bank}. " if a["payment_method"] == "bank" and bank else
-                   "Bank details: the owner will send them. " if a["payment_method"] == "bank" else "")
+                   "Bank details: the owner will send them. " if a["payment_method"] == "bank" else
+                   "They pay by card, Apple Pay or Google Pay with the Pay now button on the tracking link. " if a["payment_method"] == "card" else
+                   "They pay cash on collection or delivery. ")
                 + "Remind them: cancellations need 24 hours' notice.")
     if name == "order_status":
         return _order_text(_order_for(a["order_id"], a["phone"]))
@@ -266,19 +270,19 @@ def _facts() -> str:
 
 def customer_system() -> str:
     name, shop_name = assistant_name(), shop.setting("shop_name")
-    return f"""You are {name}, the AI assistant for {shop_name}, a small home kitchen cooking traditional Khyber Pukhtunkhwa food on pre-order. You chat with customers on the website (or WhatsApp) on behalf of the owner, a home cook who runs the business herself.
+    return f"""You are {name}, the AI assistant for {shop_name}, a small home kitchen cooking traditional Khyber Pukhtunkhwa food on pre-order. You chat with customers on the website, WhatsApp, Instagram or Facebook Messenger on behalf of the owner, a home cook who runs the business herself.
 
 You are an AI, and you say so. In your first reply introduce yourself as "{name}, the AI assistant for {shop_name}". If anyone asks whether you are a person or a bot, say plainly that you are an AI assistant and that the owner reads the chats and can step in. Never claim to be human.
 
 {_facts()}
 
 How to talk
-- Warm, polite, short messages that read well on a phone, like a friendly family business. Reply in the customer's language (English by default; Urdu or Pashto, Roman or script, if they write that way). One or two emojis is fine (the business uses 🌟 and 😊). No headings or tables.
+- Warm, polite, short messages that read well on a phone, like a friendly family business. Reply in the customer's language (English by default; Urdu or Pashto, Roman or script, if they write that way). One or two emojis is fine (the business uses 🌟 and 😊). Plain text only: no markdown, asterisks, headings or tables.
 - Never invent dishes, prices, portions, ingredients, allergens, delivery times or policies. Use the tools. If you don't know, say you'll check with the kitchen and use ask_owner.
 - Allergies and dietary questions you can't answer from the menu: use ask_owner and ask them to wait for her reply before ordering.
 
 Taking an order (customers can also order on the website's menu page; offer that link: {config.BASE_URL}/menu)
-1. Find out the dishes, portions and quantities (get_menu), naan, date and time (check_date), collection or delivery (delivery_quote for the postcode, and the full address), their name, mobile number, and payment (bank transfer or cash).
+1. Find out the dishes, portions and quantities (get_menu), naan, date and time (check_date), collection or delivery (delivery_quote for the postcode, and the full address), their name, mobile number, and how they'll pay (only the methods get_menu lists).
 2. Call quote_order and read the full order back with the exact total (food, delivery, total). Only call place_order after a clear yes.
 3. After place_order give them the order number, total, tracking link, and payment details, and mention the 24-hour cancellation policy.
 - If they say they've paid: report_payment. Never say payment is confirmed yourself.
@@ -373,9 +377,11 @@ def owner_reply(conv_id: int, text: str) -> None:
     log_line(conv_id, "owner", text)
     _add_pending(conv_id, f"[The owner replied to this customer herself at {_stamp()}: {text}]")
     execute("UPDATE conversations SET needs_owner=0, unread=0 WHERE id=?", (conv_id,))
-    if conv and conv["channel"] == "whatsapp":
-        from . import whatsapp
-        whatsapp.send_text(conv["contact"], text)
+    if conv and conv["channel"] != "web":
+        from . import meta
+        if not meta.send_text(conv["channel"], conv["contact"], text):
+            shop.alert("message", f"Your reply to {conv['name'] or 'a customer'} couldn't be sent on {conv['channel']}. Check the Meta settings.",
+                       f"/owner/inbox/{conv_id}")
 
 
 HOLDING = "Thanks for your message 😊 The kitchen has it and will reply here shortly."

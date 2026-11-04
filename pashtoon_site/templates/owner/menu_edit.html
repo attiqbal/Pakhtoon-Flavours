@@ -2,14 +2,18 @@
 {% block title %}{{ it.name if it else 'New dish' }}{% endblock %}
 {% block main %}
 <div class="topbar"><div><span class="eyebrow"><a href="/owner/menu">Menu</a></span><h1>{{ it.name if it else 'New dish' }}</h1></div></div>
-<form method="post" action="/owner/menu/{{ it.id if it else 'new' }}" class="grid two" style="align-items:start"><input type="hidden" name="csrf" value="{{ csrf }}">
+<form method="post" action="/owner/menu/{{ it.id if it else 'new' }}" enctype="multipart/form-data" class="grid two" style="align-items:start"><input type="hidden" name="csrf" value="{{ csrf }}">
   <div class="card">
     <div class="field"><label>Name</label><input name="name" value="{{ it.name if it else '' }}" required></div>
     <div class="field"><label>Section</label><select name="category">{% for k, label in menu_categories %}<option value="{{ k }}" {% if it and it.category == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
     <div class="field"><label>Description</label><textarea name="description" rows="3">{{ it.description if it else '' }}</textarea></div>
     <div class="field"><label>Notice needed (hours)</label><input type="number" name="notice_hours" min="0" max="336" value="{{ it.notice_hours if it else 24 }}" style="max-width:120px"></div>
     <label class="check"><input type="checkbox" name="available" value="1" {% if not it or it.available %}checked{% endif %}> On the menu</label>
-    {% if it and it.image %}<img src="/static/img/{{ it.image }}" alt="" style="border-radius:20px;margin-top:14px;max-width:240px">{% endif %}
+    <div class="field" style="margin-top:16px"><label>Photo</label>
+      {% if it and it.image %}<img src="{{ image_url(it.image) }}" alt="" style="border-radius:20px;margin-bottom:10px;max-width:240px;aspect-ratio:1;object-fit:cover">{% endif %}
+      <input type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+      <div class="hint">A square, well-lit photo works best. JPEG, PNG or WebP, up to 8 MB.</div>
+      {% if it and it.image %}<label class="check tiny" style="margin-top:8px"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label>{% endif %}</div>
   </div>
   <div class="card">
     <h2>Portions and prices</h2>

@@ -9,7 +9,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from pashtoon_site import agent, config, db, geo, shop, web
+import time
+
+from pashtoon_site import agent, config, db, geo, meta, payments, shop, web
 
 PASSWORD = "kitchen-secret-1"
 POSTCODES = {"OL7 9TG": (53.4875, -2.1029), "OL6 6AA": (53.4930, -2.0920), "M1 1AE": (53.4794, -2.2453), "WA1 1AA": (53.3900, -2.5900)}
@@ -19,6 +21,9 @@ POSTCODES = {"OL7 9TG": (53.4875, -2.1029), "OL6 6AA": (53.4930, -2.0920), "M1 1
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OWNER_PASSWORD", PASSWORD)
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path / "uploads"))
+    for k in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "WHATSAPP_TOKEN", "INSTAGRAM_TOKEN", "META_PAGE_TOKEN", "META_APP_SECRET"):
+        monkeypatch.setattr(config, k, "")
     monkeypatch.setattr(geo, "lookup", lambda p: POSTCODES.get(geo.normalise(p)))
     web._hits.clear()
     agent.set_client(None)
@@ -49,7 +54,7 @@ def day(n=2):
 
 def checkout(c, items, **kw):
     data = {"cart": json.dumps(items), "name": "Ayesha Khan", "phone": "07700 900123", "fulfilment": "collection",
-            "date": day(), "time": "18:00", "payment": "bank", "agree": "1", "csrf": csrf(c, "/checkout")}
+            "date": day(), "time": "18:00", "payment": "cash", "agree": "1", "csrf": csrf(c, "/checkout")}
     data.update(kw)
     return c.post("/checkout", data=data)
 
@@ -113,8 +118,9 @@ def test_notice_closed_days_and_daily_limit(client):
 
 
 def test_checkout_tracking_payment_and_cancel(client):
+    db.set_setting("pay_bank", True)
     r = checkout(client, [{"option_id": opt("Namkeen", "half"), "qty": 1}, {"option_id": opt("Nan"), "qty": 3}],
-                 fulfilment="delivery", address="12 Park Road, Ashton", postcode="ol66aa", date=day(5))
+                 fulfilment="delivery", address="12 Park Road, Ashton", postcode="ol66aa", date=day(5), payment="bank")
     assert r.status_code == 303, r.text[:500]
     code = r.headers["location"].split("/o/")[1].split("?")[0]
     page = client.get(f"/o/{code}?new=1").text
@@ -197,7 +203,7 @@ def test_recipes_stock_shopping_writeoff_and_money(client):
     dp = opt("Dam Pukh", "per person")
     shop.set_recipe(dp, "250 g lamb\n1 pcs onion\n1 tbsp oil")
     shop.record_purchase("lamb", 1, "kg", 12)
-    o = shop.place_order([{"option_id": dp, "qty": 6}], "Zainab", "07700900005", "collection", day(2), "18:00", "bank")
+    o = shop.place_order([{"option_id": dp, "qty": 6}], "Zainab", "07700900005", "collection", day(2), "18:00", "cash")
     sl = shop.shopping_list(day(2), day(2))
     lamb = next(r for r in sl["rows"] if r["name"] == "lamb")
     assert lamb["buy"] == "500 g" and sl["orders"] == 1
@@ -228,7 +234,7 @@ def test_menu_edit_and_settings(client):
     assert shop.find_option("Kheer", "serving")["price"] == 8 and shop.find_option("Kheer", "family")["price"] == 30
     assert shop.recipe_text(it["id"]) == "100 ml milk\n20 g rice"
     r = client.post("/owner/settings", data={"csrf": csrf(client, "/owner/settings"), "accepting_orders": "1", "offers_delivery": "1",
-                                              "offers_collection": "1", "slot_start": "13:00", "slot_end": "20:00", "slot_minutes": "30",
+                                              "offers_collection": "1", "pay_cash": "1", "slot_start": "13:00", "slot_end": "20:00", "slot_minutes": "30",
                                               "daily_order_limit": "8", "bank_details": "Sort 00-00-00", "band_miles_0": "3", "band_fee_0": "4.50",
                                               "band_fee_1": "8", "band_min_1": "60", "max_delivery_miles": "10", "shop_name": "The Pashtoon Flavours"})
     assert r.status_code == 303
@@ -331,12 +337,85 @@ def test_owner_assistant(client):
 
 def test_whatsapp_webhook(client, monkeypatch):
     monkeypatch.setattr(config, "META_APP_SECRET", "s3cret")
-    monkeypatch.setattr(config, "WHATSAPP_VERIFY_TOKEN", "vt")
+    monkeypatch.setattr(config, "META_VERIFY_TOKEN", "vt")
     assert client.get("/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=vt&hub.challenge=42").text == "42"
-    body = json.dumps({"entry": [{"changes": [{"value": {"contacts": [{"wa_id": "447700900009", "profile": {"name": "Noor"}}],
+    body = json.dumps({"object": "whatsapp_business_account", "entry": [{"changes": [{"value": {"contacts": [{"wa_id": "447700900009", "profile": {"name": "Noor"}}],
                                                          "messages": [{"from": "447700900009", "id": "m1", "type": "text", "text": {"body": "menu?"}}]}}]}]}).encode()
     assert client.post("/webhook/whatsapp", content=body, headers={"x-hub-signature-256": "sha256=bad"}).status_code == 403
     sig = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
     assert client.post("/webhook/whatsapp", content=body, headers={"x-hub-signature-256": sig}).status_code == 200
     conv = db.q1("SELECT * FROM conversations WHERE channel='whatsapp'")
     assert conv["name"] == "Noor" and conv["needs_owner"] == 1
+    # Meta retries the same delivery: it is answered once
+    client.post("/webhook/meta", content=body, headers={"x-hub-signature-256": sig})
+    assert db.q1("SELECT COUNT(*) n FROM chat_log WHERE sender='customer'")["n"] == 1
+
+
+def test_instagram_and_messenger_parse_and_reply(client, monkeypatch):
+    monkeypatch.setattr(config, "META_APP_SECRET", "s3cret")
+    monkeypatch.setattr(config, "INSTAGRAM_TOKEN", "igtok")
+    sent = []
+    monkeypatch.setattr(meta.httpx, "post", lambda url, **kw: sent.append((url, kw)) or SimpleNamespace(status_code=200, text=""))
+    agent.set_client(FakeClaude([[{"type": "text", "text": "Hi, I'm Zara, the AI assistant 😊"}]]))
+    ig = {"object": "instagram", "entry": [{"messaging": [
+        {"sender": {"id": "ig123"}, "message": {"mid": "a1", "text": "Do you deliver to OL6?"}},
+        {"sender": {"id": "biz"}, "message": {"mid": "a2", "text": "echo", "is_echo": True}}]}]}
+    fb = {"object": "page", "entry": [{"messaging": [{"sender": {"id": "fb9"}, "message": {"mid": "b1", "attachments": [{"type": "image"}]}}]}]}
+    assert [m["channel"] for m in meta.parse(ig)] == ["instagram"]
+    assert meta.parse(fb)[0]["channel"] == "messenger" and "can't be read" in meta.parse(fb)[0]["text"]
+    body = json.dumps(ig).encode()
+    sig = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+    assert client.post("/webhook/meta", content=body, headers={"x-hub-signature-256": sig}).status_code == 200
+    assert sent and sent[0][0].endswith("/me/messages") and sent[0][1]["json"]["recipient"] == {"id": "ig123"}
+    assert db.q1("SELECT channel FROM conversations")["channel"] == "instagram"
+
+
+# ---------------------------------------------------------------- payments and photos
+
+def test_payment_methods_follow_settings(client):
+    page = client.get("/checkout").text
+    assert 'value="cash"' in page and 'value="bank"' not in page and 'value="card"' not in page   # cash only to start
+    r = checkout(client, [{"option_id": opt("Kheer"), "qty": 1}], payment="bank")
+    assert r.status_code == 200 and "Choose how you" in r.text
+
+
+def test_card_payment_with_stripe(client, monkeypatch):
+    monkeypatch.setattr(config, "STRIPE_SECRET_KEY", "sk_test_x")
+    monkeypatch.setattr(config, "STRIPE_WEBHOOK_SECRET", "whsec_x")
+    assert 'value="card"' in client.get("/checkout").text
+    made = []
+    monkeypatch.setattr(payments, "create_checkout", lambda o: made.append(o["id"]) or "https://checkout.stripe.com/c/pay/cs_test_1")
+    r = checkout(client, [{"option_id": opt("Kheer"), "qty": 2}], payment="card")
+    assert r.status_code == 303 and r.headers["location"].startswith("https://checkout.stripe.com/")
+    o = shop.get_order(made[0])
+    assert o["payment_method"] == "card" and o["total"] == 15
+    monkeypatch.setattr(payments, "paid_order_id", lambda sid: o["id"] if sid == "cs_test_1" else None)
+    page = client.get(f"/o/{o['code']}?stripe_session=cs_bogus").text
+    assert "Pay now" in page and shop.get_order(o["id"])["payment_status"] == "unpaid"
+    page = client.get(f"/o/{o['code']}?stripe_session=cs_test_1").text
+    assert "Payment received" in page and shop.get_order(o["id"])["payment_status"] == "paid"
+    # the webhook also marks orders paid, but only with a valid signature
+    o2 = shop.place_order([{"option_id": opt("Nan"), "qty": 1}], "B", "07700900011", "collection", day(), "18:00", "card")
+    ev = json.dumps({"type": "checkout.session.completed", "data": {"object": {"id": "cs_2", "payment_status": "paid",
+                                                                                  "metadata": {"order_id": str(o2["id"])}}}}).encode()
+    assert client.post("/webhook/stripe", content=ev, headers={"stripe-signature": "t=1,v1=bad"}).status_code == 400
+    t = str(int(time.time()))
+    sig = hmac.new(b"whsec_x", f"{t}.".encode() + ev, hashlib.sha256).hexdigest()
+    assert client.post("/webhook/stripe", content=ev, headers={"stripe-signature": f"t={t},v1={sig}"}).status_code == 200
+    assert shop.get_order(o2["id"])["payment_status"] == "paid"
+
+
+def test_dish_photo_upload(client):
+    login(client)
+    it = shop.option(opt("Chicken Tikka"))
+    data = {"csrf": csrf(client, "/owner/menu"), "name": "Chicken Tikka", "category": "also", "description": "x", "notice_hours": "24",
+            "available": "1", "opt_id_0": str(it["id"]), "opt_label_0": "Portion", "opt_price_0": "12"}
+    r = client.post(f"/owner/menu/{it['item_id']}", data=data, files={"photo": ("evil.jpg", b"<script>alert(1)</script>", "image/jpeg")})
+    assert "error" in r.headers["location"]
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+    r = client.post(f"/owner/menu/{it['item_id']}", data=data, files={"photo": ("tikka.png", png, "image/png")})
+    assert "error" not in r.headers["location"]
+    img = db.q1("SELECT image FROM menu_items WHERE id=?", (it["item_id"],))["image"]
+    assert img.startswith("/media/dish-") and img.endswith(".png")
+    assert client.get(img).content == png
+    assert img in client.get("/menu").text

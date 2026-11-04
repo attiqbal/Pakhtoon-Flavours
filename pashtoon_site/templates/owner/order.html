@@ -21,7 +21,7 @@
         {% for s in statuses %}<button class="btn small {% if s == o.status %}dark{% elif s == 'cancelled' %}danger{% endif %}" name="status" value="{{ s }}" {% if s == 'cancelled' %}onclick="return confirm('Cancel order #{{ o.id }}?')"{% endif %}>{{ s|capitalize }}</button>{% endfor %}
       </form>
       <form method="post" action="/owner/orders/{{ o.id }}/payment" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
-        <span class="small">Payment ({{ 'cash' if o.payment_method == 'cash' else 'bank transfer' }}):</span>
+        <span class="small">Payment ({{ pay_label(o.payment_method)|lower }}):</span>
         {% for s, label in [('unpaid','Not paid'),('paid','Paid')] %}<button class="btn small {% if s == o.payment_status %}dark{% endif %}" name="payment_status" value="{{ s }}">{{ label }}</button>{% endfor %}
       </form>
       {% if o.payment_status == 'reported' %}<p class="alert info" style="margin:14px 0 0">The customer says they've paid. Check your bank, then press Paid.</p>{% endif %}

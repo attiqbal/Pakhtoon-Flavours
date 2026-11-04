@@ -16,11 +16,18 @@ ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = _env("CLAUDE_MODEL", "claude-sonnet-5-5")
 TZ = ZoneInfo("Europe/London")
 
-# Optional: WhatsApp Cloud API, so the same assistant answers her WhatsApp. Leave empty to use the website chat only.
+# Optional Meta channels (see docs/meta-setup.md). One webhook, /webhook/meta, for all three. Empty = off.
+META_APP_SECRET = _env("META_APP_SECRET")                 # Meta app > App settings > Basic > App secret
+META_VERIFY_TOKEN = _env("META_VERIFY_TOKEN") or _env("WHATSAPP_VERIFY_TOKEN")   # any word you choose
 WHATSAPP_TOKEN = _env("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = _env("WHATSAPP_PHONE_ID")
-WHATSAPP_VERIFY_TOKEN = _env("WHATSAPP_VERIFY_TOKEN")
-META_APP_SECRET = _env("META_APP_SECRET")
+INSTAGRAM_TOKEN = _env("INSTAGRAM_TOKEN")                 # Instagram API with Instagram Login, messages permission
+META_PAGE_TOKEN = _env("META_PAGE_TOKEN")                 # Facebook Page access token, for Messenger
+
+# Optional card payments through Stripe Checkout (cards, Apple Pay, Google Pay). Empty = off.
+STRIPE_SECRET_KEY = _env("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = _env("STRIPE_WEBHOOK_SECRET")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 
 
 def secret_key() -> str:

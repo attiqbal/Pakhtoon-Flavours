@@ -17,9 +17,15 @@
       {% for i in o['items'] %}<div class="summary-line"><span>{{ i.qty }} × {{ i.dish }} <span class="faint small">({{ i.portion }})</span></span><span>{{ money(i.qty * i.unit_price) }}</span></div>{% endfor %}
       {% if o.delivery_fee %}<div class="summary-line"><span>Delivery</span><span>{{ money(o.delivery_fee) }}</span></div>{% endif %}
       <div class="summary-line total"><span>Total</span><span>{{ money(o.total) }}</span></div>
-      <p class="small" style="margin-top:12px">Payment: <b>{{ 'Cash' if o.payment_method == 'cash' else 'Bank transfer' }}</b> · <span class="badge {{ o.payment_status }}">{{ {'unpaid':'not paid yet','reported':'checking payment','paid':'paid'}[o.payment_status] }}</span></p>
+      <p class="small" style="margin-top:12px">Payment: <b>{{ pay_label(o.payment_method) }}</b> · <span class="badge {{ o.payment_status }}">{{ {'unpaid':'not paid yet','reported':'checking payment','paid':'paid'}[o.payment_status] }}</span></p>
     </div>
     <div class="stack">
+      {% if paid_now %}<div class="card sage"><h2>Payment received</h2><p style="margin:0">Thank you, your card payment went through.</p></div>{% endif %}
+      {% if o.status != 'cancelled' and o.payment_method == 'card' and o.payment_status != 'paid' %}
+      <div class="card sand"><h2>Pay for your order</h2><p class="small">Pay {{ money(o.total) }} by card, Apple Pay or Google Pay on Stripe's secure page.</p>
+        {% if card_ready %}<form method="post" action="/o/{{ o.code }}/pay"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn primary big">Pay now</button></form>
+        {% else %}<p class="small muted" style="margin:0">Online payment isn't available right now. We'll message you, or you can pay cash.</p>{% endif %}</div>
+      {% endif %}
       {% if o.status != 'cancelled' and o.payment_method == 'bank' and o.payment_status == 'unpaid' %}
       <div class="card sand"><h2>Paying by bank transfer</h2><pre class="msg" style="background:transparent;border:0;padding:0">{{ payment_msg }}</pre>
         <form method="post" action="/o/{{ o.code }}/paid" style="margin-top:14px"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn primary">I've paid</button></form></div>

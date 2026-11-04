@@ -321,13 +321,16 @@ def quote(lines: list[dict], fulfilment: str, postcode: str = "", d: str = "", t
 
 
 def place_order(lines: list[dict], name: str, phone: str, fulfilment: str, d: str, t: str, payment_method: str,
-                address: str = "", postcode: str = "", email: str = "", notes: str = "", source: str = "web") -> dict:
+                address: str = "", postcode: str = "", email: str = "", notes: str = "", source: str = "web",
+                by_owner: bool = False) -> dict:
     name = (name or "").strip()[:80]
     if not name:
         raise ShopError("Please tell us your name.")
     phone = clean_phone(phone)
-    if payment_method not in ("bank", "cash"):
-        raise ShopError("Choose how you'll pay: bank transfer or cash.")
+    from . import payments
+    allowed = ("cash", "bank", "card") if by_owner else tuple(m for m, _ in payments.methods())
+    if payment_method not in allowed:
+        raise ShopError("Choose how you'll pay: " + ", ".join(lbl.lower() for m, lbl in payments.methods()) + ".")
     if fulfilment == "delivery" and len((address or "").strip()) < 5:
         raise ShopError("Please enter the delivery address.")
     qt = quote(lines, fulfilment, postcode, d, t)
@@ -376,6 +379,13 @@ def report_payment(order_id: int) -> dict:
         alert("payment", f"{o['customer_name']} says they've paid {money(o['total'])} for order #{order_id}. Please check your bank.",
               f"/owner/orders/{order_id}")
     return get_order(order_id)
+
+
+def mark_card_paid(order_id: int) -> None:
+    o = get_order(order_id)
+    if o["payment_status"] != "paid":
+        set_payment(order_id, "paid")
+        alert("payment", f"{o['customer_name']} paid {money(o['total'])} by card for order #{order_id}.", f"/owner/orders/{order_id}")
 
 
 def hours_until(o: dict) -> float:
