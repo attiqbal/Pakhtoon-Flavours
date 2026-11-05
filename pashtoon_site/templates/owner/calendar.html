@@ -3,6 +3,14 @@
 {% block main %}
 <div class="topbar"><div><span class="eyebrow">Calendar</span><h1>{{ title }}</h1></div>
   <div class="row"><a class="btn small" href="?month={{ prev }}">← Previous</a><a class="btn small" href="/owner/calendar">This month</a><a class="btn small" href="?month={{ next }}">Next →</a></div></div>
+<div class="agenda sm-only">
+  {% set ns = namespace(any=false) %}
+  {% for week in weeks %}{% for d in week %}{% if d.in_month and (d.orders or d.closed) %}{% set ns.any = true %}
+  <div class="agenda-day {% if d.today %}today{% endif %}"><div class="row between"><b>{{ pretty(d.date) }}{% if d.today %} · today{% endif %}</b>{% if d.closed %}<span class="badge cancelled">closed</span>{% endif %}</div>
+    {% for o in d.orders %}<a class="ticket-mini" href="/owner/orders/{{ o.id }}"><span>{{ o.time }} · {{ o.customer_name }}</span><span>{{ money(o.total) }}</span></a>{% endfor %}</div>
+  {% endif %}{% endfor %}{% endfor %}
+  {% if not ns.any %}<p class="muted">No orders or closed days this month yet. Tap a day below to close it.</p>{% endif %}
+</div>
 <div class="scroll-x"><table class="cal">
   <thead><tr>{% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<th>{{ d }}</th>{% endfor %}</tr></thead>
   <tbody>{% for week in weeks %}<tr>{% for d in week %}

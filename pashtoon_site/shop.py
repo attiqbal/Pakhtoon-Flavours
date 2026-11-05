@@ -20,6 +20,7 @@ EXPENSE_ACCOUNTS = {"Packaging": "5400", "Spices, herbs and consumables": "5300"
                     "Delivery": "6200", "Small equipment": "6300", "Marketing": "6400", "Card and platform fees": "6500",
                     "Partner commission": "6600", "Phone and internet": "6700", "Other": "6900"}
 EXPENSE_CATEGORIES = list(EXPENSE_ACCOUNTS)
+PAY_WORDS = {"cash": "cash", "bank": "bank transfer", "card": "card online", "partner": "paid through the delivery app"}
 PAID_FROM = {"1110": "Cash", "1120": "Bank", "2110": "Not paid yet (supplier owed)"}
 # Words that mark an ingredient as a spice, herb or other small item that isn't weighed out per dish. These are not
 # tracked in stock or shopping lists; buying them is a consumables expense.
@@ -279,6 +280,22 @@ def check_slot(d: str, t: str, notice_hours: int = 24, ignore_order: int | None 
         taken = [o for o in orders_on(day.isoformat()) if o["id"] != ignore_order]
         if len(taken) >= limit:
             raise ShopError(f"Sorry, {pretty_date(day.isoformat())} is fully booked. Please choose another day.")
+
+
+def earliest_day(notice_hours: int = 24) -> str | None:
+    """The first day a new order can be cooked for, as 'Saturday 7 November' (None if not taking orders)."""
+    if not setting("accepting_orders"):
+        return None
+    slots = time_slots()
+    first = now() + timedelta(hours=notice_hours)
+    for add in range(0, 60):
+        day = (first + timedelta(days=add)).date()
+        if day.isoformat() in (setting("closed_dates") or []):
+            continue
+        if add == 0 and slots and first.strftime("%H:%M") > slots[-1]:
+            continue
+        return pretty_date(day.isoformat())
+    return None
 
 
 def delivery_quote(postcode: str, food_total: float = 0) -> dict:
@@ -824,7 +841,7 @@ def ics_feed() -> str:
         begin = datetime.combine(parse_date(o["date"]), datetime.strptime(o["time"], "%H:%M").time())
         dishes = ", ".join(f"{i['qty']} x {i['dish']} ({i['portion']})" for i in o["items"])
         desc = (f"{dishes}\nTotal {money(o['total'])} ({'paid' if o['payment_status'] == 'paid' else 'not paid yet'}, "
-                f"{'cash' if o['payment_method'] == 'cash' else 'bank transfer'})\nPhone {o['phone']}"
+                f"{PAY_WORDS.get(o['payment_method'], o['payment_method'])})\nPhone {o['phone']}"
                 + (f"\nDeliver to {o['address']} {o['postcode']}" if o["fulfilment"] == "delivery" else "")
                 + (f"\nNotes: {o['notes']}" if o["notes"] else "") + f"\n{config.BASE_URL}/owner/orders/{o['id']}")
         lines += ["BEGIN:VEVENT", f"UID:pashtoon-order-{o['id']}@pashtoonflavours", f"DTSTAMP:{stamp}",

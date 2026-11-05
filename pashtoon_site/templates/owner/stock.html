@@ -38,11 +38,11 @@
 <div class="grid two" style="align-items:start">
   <div class="card">
     <h2>In stock</h2>
-    {% if items %}<table class="list"><thead><tr><th>Ingredient</th><th>Have</th><th>Warn below</th><th>Cost</th></tr></thead><tbody>
-    {% for i in items %}<tr><td>{{ i.name }}{% if i.low %} <span class="badge cancelled">low</span>{% endif %}</td><td><b>{{ i.stock_txt }}</b></td>
-      <td><form method="post" action="/owner/stock/low" class="row" style="gap:4px;flex-wrap:nowrap"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="ingredient" value="{{ i.id }}"><input type="hidden" name="unit" value="{{ i.unit }}">
+    {% if items %}<table class="list stack-sm"><thead><tr><th>Ingredient</th><th>Have</th><th>Warn below</th><th>Cost</th></tr></thead><tbody>
+    {% for i in items %}<tr><td class="sm-head">{{ i.name }}{% if i.low %} <span class="badge cancelled">low</span>{% endif %}</td><td data-label="Have"><b>{{ i.stock_txt }}</b></td>
+      <td data-label="Warn below"><form method="post" action="/owner/stock/low" class="row" style="gap:4px;flex-wrap:nowrap"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="ingredient" value="{{ i.id }}"><input type="hidden" name="unit" value="{{ i.unit }}">
         <input name="qty" value="{{ '%g'|format(i.low_at) }}" style="width:80px;padding:6px 8px" aria-label="Warn below"><span class="small faint">{{ i.unit }}</span><button class="btn small">Set</button></form></td>
-      <td class="small faint">{% if i.cost_per_unit %}£{{ '%.2f'|format(i.cost_per_unit * (1000 if i.unit in ['g','ml'] else 1)) }}/{{ 'kg' if i.unit == 'g' else ('l' if i.unit == 'ml' else 'each') }}{% endif %}</td></tr>{% endfor %}
+      <td class="small faint" data-label="Cost">{% if i.cost_per_unit %}£{{ '%.2f'|format(i.cost_per_unit * (1000 if i.unit in ['g','ml'] else 1)) }}/{{ 'kg' if i.unit == 'g' else ('l' if i.unit == 'ml' else 'each') }}{% endif %}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="muted">Nothing yet. Add your first purchase above, or add recipes on the Menu page.</p>{% endif %}
   </div>
   <div class="stack">
