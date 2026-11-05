@@ -5,7 +5,7 @@
   <div class="hero-panel">
     <span class="eyebrow">Traditional Khyber Pukhtunkhwa cuisine</span>
     <h1>Slow-cooked,<br><span class="thin">the Peshawar way.</span></h1>
-    <p>Dam Pukh, Namkeen Gosht, Bannu Pulao and Raan Pulao, cooked at home to order. Pre-order online for collection or delivery.</p>
+    <p>Dam Pukh, Namkeen Gosht, Bannu Pulao and Raan Pulao, cooked at home to order. Pre-order online for collection{% if st.offers_delivery %} or delivery{% endif %}.</p>
     <div class="row"><a class="btn primary big" href="/menu">Order now</a><a class="ghost" href="#how">How pre-ordering works</a></div>
     {% if not st.accepting_orders %}<p class="alert info" style="margin:18px 0 0">We're not taking new orders right now. Message us and we'll let you know when we reopen.</p>{% endif %}
   </div>
@@ -30,7 +30,7 @@
   <span class="eyebrow">How it works</span><h2>Order a day ahead.<br><span class="thin">We cook it fresh.</span></h2>
   <div class="steps">
     <div><div class="n">1</div><h3>Choose your dishes</h3><p class="muted">Per person or family portions. Add nan, chutney, salad and kheer.</p></div>
-    <div><div class="n">2</div><h3>Pick a day and time</h3><p class="muted">At least 24 hours ahead, 48 hours for Raan Pulao. Collection or delivery.</p></div>
+    <div><div class="n">2</div><h3>Pick a day and time</h3><p class="muted">At least 24 hours ahead, 48 hours for Raan Pulao. Collection{% if st.offers_delivery %} or delivery{% endif %}.</p></div>
     <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">Cash on collection or delivery{% if st.pay_card %}, or card, Apple Pay and Google Pay online{% endif %}. You'll get your order number straight away.</p></div>
     <div><div class="n">4</div><h3>Questions?</h3><p class="muted">Chat with us here any time, or on WhatsApp {{ st.whatsapp }}.</p></div>
   </div>
@@ -38,7 +38,8 @@
 
 <section class="band sand" id="delivery"><div class="wrap split">
   <div>
-    <span class="eyebrow">Collection and delivery</span><h2>Collect from {{ st.kitchen_postcode }}<br><span class="thin">or we'll bring it to you.</span></h2>
+    <span class="eyebrow">Collection{% if st.offers_delivery %} and delivery{% endif %}</span><h2>Collect from {{ st.kitchen_postcode }}{% if st.offers_delivery %}<br><span class="thin">or we'll bring it to you.</span>{% endif %}</h2>
+    {% if partners %}<p><b>Delivery apps</b>: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
     {% if st.offers_delivery %}<p><b>Delivery charges</b></p>{% for b in bands %}<div class="summary-line">{{ b }}</div>{% endfor %}{% endif %}
     <p class="small muted" style="margin-top:14px">Cancellations need at least 24 hours' notice. For late cancellations or no-shows we may not be able to offer a full refund, as ingredients and cooking will already have started.</p>
     <a class="btn primary" href="/menu">Start your order</a>

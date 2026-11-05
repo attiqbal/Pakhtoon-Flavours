@@ -32,10 +32,19 @@ MENU = [
     ("kheer", "Kheer", "dessert",
      "Creamy rice pudding inspired by the timeless flavours of Peshawar's Qissa Khwani Bazaar.",
      "kheer.jpg", 24, [("Per serving", 7.5)]),
+    ("tiffin", "Tiffin Service", "tiffin",
+     "Home-cooked meals delivered to your routine. Ask us about plans, days and prices.",
+     None, 24, []),
 ]
 
+# Dishes customers ask about rather than add to the basket (details come later from her, through the assistant).
+ENQUIRY_ITEMS = {"tiffin"}
+
 CATEGORIES = [("mains", "Mains"), ("special", "Special order · 48 hours' notice"), ("also", "Also available"),
-              ("extras", "Extras"), ("dessert", "Dessert")]
+              ("extras", "Extras"), ("dessert", "Dessert"), ("tiffin", "Tiffin service")]
+
+# Delivery partners she can switch on later. Orders from them can also be posted to /api/partner-orders.
+PARTNERS = [("ubereats", "Uber Eats"), ("deliveroo", "Deliveroo"), ("justeat", "Just Eat")]
 
 DEFAULT_SETTINGS = {
     "shop_name": "The Pashtoon Flavours",
@@ -46,7 +55,10 @@ DEFAULT_SETTINGS = {
     "instagram": "thepashtoonflavours",
     "tiktok": "thepashtoonflavours",
     "accepting_orders": True,
-    "offers_delivery": True,
+    "offers_delivery": False,         # collection only for now; switch on in Settings
+    # Delivery partners: shown as "Also on ..." links when on; commission is used in the accounts.
+    "partners": {k: {"on": False, "url": "", "commission": 30} for k, _ in PARTNERS},
+    "partner_key": "",                # secret for /api/partner-orders (made on first start)
     "offers_collection": True,
     # miles up to (None = any distance), fee, minimum food order for that band
     "delivery_bands": [[3, 3.99, 0], [6, 5.99, 0], [None, 7.99, 50]],
@@ -64,4 +76,6 @@ DEFAULT_SETTINGS = {
     "announcement": "",
     "ai_enabled": True,
     "assistant_name": "Zara",
+    "ai_model": "",                   # empty = CLAUDE_MODEL from .env (Opus by default, the strongest model)
+    "promo_item_id": 0,               # dish whose video pops up once per visit (0 = off)
 }

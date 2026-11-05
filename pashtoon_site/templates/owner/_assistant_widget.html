@@ -1,0 +1,37 @@
+<button class="btn dark chat-fab" id="oa-open" type="button">Ask {{ st.assistant_name }}</button>
+<div class="chat-box hide" id="oa-box" role="dialog" aria-label="Your assistant">
+  <div class="chat-head"><div><b>{{ st.assistant_name }} · your assistant</b><div class="tiny">Orders, menu, prices, recipes, stock, accounts. Attach photos or videos for dishes.</div></div>
+    <button type="button" id="oa-close" aria-label="Close">×</button></div>
+  <div class="chat-log" id="oa-log"></div>
+  <div class="tiny" id="oa-files" style="padding:0 16px"></div>
+  <form class="chat-form" id="oa-form"><label class="btn small" title="Attach photos or videos" style="cursor:pointer;margin:0">+<input type="file" id="oa-file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" hidden></label>
+    <input id="oa-input" placeholder="Ask or tell me something…" autocomplete="off" aria-label="Message"><button class="btn primary small" type="submit">Send</button></form>
+</div>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const open = $("oa-open"), box = $("oa-box"), log = $("oa-log"), input = $("oa-input"), fileIn = $("oa-file");
+  let loaded = false;
+  const add = (cls, text) => { const d = document.createElement("div"); d.className = "bubble " + cls; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
+  async function load() {
+    if (loaded) return; loaded = true;
+    add("ai", "Hello! Tell me what you need, like \"what's on tomorrow?\", \"add a lamb biryani for £14\" or send me a photo of a dish.");
+    try { const j = await (await fetch("/api/owner/history")).json(); (j.history || []).forEach((m) => add(m.role === "user" ? "me" : "ai", m.text)); } catch (e) {}
+  }
+  open.addEventListener("click", () => { box.classList.remove("hide"); open.classList.add("hide"); load(); input.focus(); });
+  $("oa-close").addEventListener("click", () => { box.classList.add("hide"); open.classList.remove("hide"); });
+  fileIn.addEventListener("change", () => { $("oa-files").textContent = fileIn.files.length ? fileIn.files.length + " file(s) attached" : ""; });
+  $("oa-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim(), files = Array.from(fileIn.files);
+    if (!text && !files.length) return;
+    input.value = ""; add("me", (text || "") + (files.length ? "  📎 " + files.map((f) => f.name).join(", ") : ""));
+    const wait = add("ai", "…");
+    const fd = new FormData(); fd.append("text", text); files.forEach((f) => fd.append("files", f));
+    fileIn.value = ""; $("oa-files").textContent = "";
+    try { const r = await fetch("/api/owner/chat", { method: "POST", headers: { "X-CSRF": window.CSRF }, body: fd });
+      const j = await r.json(); wait.textContent = j.reply || j.error || "Sorry, something went wrong."; log.scrollTop = log.scrollHeight;
+    } catch (err) { wait.textContent = "Couldn't reach the server."; }
+  });
+})();
+</script>

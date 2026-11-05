@@ -10,7 +10,7 @@
 </head>
 <body>
 {% set nav = [('/owner', 'Today'), ('/owner/orders', 'Orders'), ('/owner/inbox', 'Messages'), ('/owner/calendar', 'Calendar'), ('/kitchen', 'Kitchen screen'),
-              ('/owner/menu', 'Menu'), ('/owner/stock', 'Stock'), ('/owner/money', 'Money'), ('/owner/assistant', 'Assistant'), ('/owner/settings', 'Settings')] %}
+              ('/owner/menu', 'Menu'), ('/owner/stock', 'Stock'), ('/owner/money', 'Money'), ('/owner/accounts', 'Accounts'), ('/owner/assistant', 'Assistant'), ('/owner/settings', 'Settings')] %}
 <div class="mob-nav">{% for href, label in nav %}<a href="{{ href }}" {% if path == href or (href != '/owner' and path.startswith(href)) %}class="on"{% endif %}>{{ label }}{% if href == '/owner/inbox' and waiting_chats %} · {{ waiting_chats }}{% endif %}</a>{% endfor %}</div>
 <div class="app">
   <aside class="side">
@@ -49,6 +49,7 @@
   pulse(); setInterval(pulse, 20000);
 })();
 </script>
+{% if not path.startswith('/owner/assistant') and not path.startswith('/kitchen') %}{% include 'owner/_assistant_widget.html' %}{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

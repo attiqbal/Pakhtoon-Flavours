@@ -51,6 +51,16 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, text TEXT NOT NULL, link TEXT, seen INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS media (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS knowledge (
+  id INTEGER PRIMARY KEY, topic TEXT UNIQUE NOT NULL COLLATE NOCASE, text TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS journals (
+  id INTEGER PRIMARY KEY, date TEXT NOT NULL, kind TEXT NOT NULL, memo TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS journal_lines (
+  id INTEGER PRIMARY KEY, journal_id INTEGER NOT NULL REFERENCES journals(id) ON DELETE CASCADE,
+  account TEXT NOT NULL, debit REAL NOT NULL DEFAULT 0, credit REAL NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS orders_date ON orders(date);
 CREATE INDEX IF NOT EXISTS chat_conv ON chat_log(conversation_id);
 """
@@ -79,8 +89,26 @@ def conn() -> sqlite3.Connection:
     return c
 
 
+# Columns added after the first release. Each is added once if missing, so old databases keep working.
+COLUMNS = [
+    ("ingredients", "tracked", "INTEGER NOT NULL DEFAULT 1"),
+    ("orders", "paid_at", "TEXT"),
+    ("orders", "partner", "TEXT"),
+    ("orders", "partner_fee", "REAL NOT NULL DEFAULT 0"),
+    ("expenses", "account", "TEXT"),
+    ("expenses", "paid_from", "TEXT NOT NULL DEFAULT '1110'"),
+    ("menu_items", "video", "TEXT"),
+    ("menu_items", "enquiry", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
 def init() -> None:
-    conn().executescript(SCHEMA)
+    c = conn()
+    c.executescript(SCHEMA)
+    for table, col, decl in COLUMNS:
+        have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+        if col not in have:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def q(sql: str, args: tuple = ()) -> list[dict]:

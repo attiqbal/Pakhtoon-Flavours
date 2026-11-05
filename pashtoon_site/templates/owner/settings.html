@@ -8,7 +8,7 @@
       <h2>Ordering</h2>
       <label class="check"><input type="checkbox" name="accepting_orders" value="1" {% if st.accepting_orders %}checked{% endif %}> Taking orders online</label>
       <label class="check"><input type="checkbox" name="offers_collection" value="1" {% if st.offers_collection %}checked{% endif %}> Collection</label>
-      <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery</label>
+      <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery by us (off for now: collection only)</label>
       <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))">
         <div class="field"><label>First time</label><input type="time" name="slot_start" value="{{ st.slot_start }}"></div>
         <div class="field"><label>Last time</label><input type="time" name="slot_end" value="{{ st.slot_end }}"></div>
@@ -16,6 +16,16 @@
       </div>
       <div class="field"><label>Most orders in one day</label><input type="number" name="daily_order_limit" min="0" value="{{ st.daily_order_limit }}" style="max-width:120px"><div class="hint">0 means no limit. Close single days from the Calendar.</div></div>
       <div class="field"><label>Message across the top of the website</label><input name="announcement" value="{{ st.announcement }}" placeholder="e.g. Ramadan boxes now available"></div>
+    </div>
+    <div class="card">
+      <h2>Delivery apps</h2>
+      <p class="small muted">Switch on the ones you use. Customers see "Also on…" links, and the assistant tells people who want delivery. Commission goes into your accounts.</p>
+      {% for key, label in partners %}{% set p = st.partners[key] if st.partners and key in st.partners else {} %}
+      <div class="grid" style="gap:10px;grid-template-columns:auto minmax(0,1fr) 90px;align-items:end;margin-bottom:6px">
+        <label class="check" style="margin:0 0 10px"><input type="checkbox" name="partner_{{ key }}" value="1" {% if p.on %}checked{% endif %}> {{ label }}</label>
+        <div class="field"><label>Your page link</label><input name="partner_url_{{ key }}" value="{{ p.url or '' }}" placeholder="https://…"></div>
+        <div class="field"><label>Commission %</label><input name="partner_fee_{{ key }}" value="{{ '%g'|format(p.commission or 0) }}"></div></div>{% endfor %}
+      <div class="field"><label>Secret for sending their orders in</label><input readonly value="{{ partner_key }}" onclick="this.select()" aria-label="Partner key"><div class="hint">Post orders to {{ partner_url }} with this in the X-Partner-Key header (for example from Zapier or an Uber Eats / Deliveroo integration). Each order is booked as owed by the app, less commission.</div></div>
     </div>
     <div class="card">
       <h2>Delivery charges</h2>
@@ -50,9 +60,15 @@
     </div>
     <div class="card">
       <h2>AI assistant</h2>
-      <p class="small">{% if ai_on %}Connected.{% else %}<b>Not connected yet.</b> Add your ANTHROPIC_API_KEY to the .env file and restart; until then customers' chat messages come to Messages for you to answer.{% endif %}
+      <p class="small">{% if ai_on %}Connected ({{ 'ChatGPT' if provider == 'openai' else 'Claude' }}, {{ model }}).{% else %}<b>Not connected yet.</b> Add ANTHROPIC_API_KEY (Claude) or OPENAI_API_KEY (ChatGPT) to the .env file and restart; until then customers' chat messages come to Messages for you to answer.{% endif %}
 </p>
+      <div class="grid two" style="gap:10px">
+        <div class="field"><label>Company</label><select name="ai_provider"><option value="anthropic" {% if provider != 'openai' %}selected{% endif %}>Claude (Anthropic){% if claude_on %} ✓{% endif %}</option><option value="openai" {% if provider == 'openai' %}selected{% endif %}>ChatGPT (OpenAI){% if openai_on %} ✓{% endif %}</option></select></div>
+        <div class="field"><label>Model</label><input name="ai_model" value="{{ st.ai_model }}" list="models" placeholder="{{ model }}"><datalist id="models">{% for m, label in models %}<option value="{{ m }}">{{ label }}</option>{% endfor %}<option value="gpt-5"></datalist></div>
+      </div>
+      <p class="hint">Empty model means the best one: Claude Opus 5.5. A ✓ means that company's key is in .env. Other OpenAI-compatible services work by setting OPENAI_BASE_URL.</p>
       <label class="check"><input type="checkbox" name="ai_enabled" value="1" {% if st.ai_enabled %}checked{% endif %}> Let the assistant answer customers</label>
+      <div class="field" style="margin-top:12px"><label>Dish video that pops up for visitors</label><select name="promo_item_id"><option value="0">None</option>{% for d in dishes if d.video %}<option value="{{ d.id }}" {% if st.promo_item_id == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select><div class="hint">Once per visit, a few seconds after they arrive. Add a video on the dish's page first.</div></div>
       <div class="field" style="margin-top:12px"><label>Assistant's name</label><input name="assistant_name" value="{{ st.assistant_name }}" style="max-width:200px"><div class="hint">It always tells customers it is an AI assistant.</div></div>
     </div>
     <button class="btn primary big block">Save settings</button>

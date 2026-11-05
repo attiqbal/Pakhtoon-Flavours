@@ -79,12 +79,15 @@ def test_install_is_idempotent(client):
     shop.update_price(opt("Kheer"), 8)
     shop.install()
     assert shop.find_option("Kheer")["price"] == 8
-    assert db.q1("SELECT COUNT(*) n FROM menu_items")["n"] == 13
+    assert db.q1("SELECT COUNT(*) n FROM menu_items")["n"] == 14
 
 
 # ---------------------------------------------------------------- ordering rules
 
 def test_quote_and_delivery_bands(client):
+    with pytest.raises(shop.ShopError, match="only doing collection"):    # collection only by default
+        shop.delivery_quote("OL6 6AA")
+    db.set_setting("offers_delivery", True)
     lines = [{"option_id": opt("Dam Pukh", "per person"), "qty": 2}, {"option_id": opt("Nan"), "qty": 2}]
     q = shop.quote(lines, "collection", d=day(), t="18:00")
     assert q["food_total"] == 34 and q["total"] == 34
@@ -119,6 +122,7 @@ def test_notice_closed_days_and_daily_limit(client):
 
 def test_checkout_tracking_payment_and_cancel(client):
     db.set_setting("pay_bank", True)
+    db.set_setting("offers_delivery", True)
     r = checkout(client, [{"option_id": opt("Namkeen", "half"), "qty": 1}, {"option_id": opt("Nan"), "qty": 3}],
                  fulfilment="delivery", address="12 Park Road, Ashton", postcode="ol66aa", date=day(5), payment="bank")
     assert r.status_code == 303, r.text[:500]
@@ -419,3 +423,183 @@ def test_dish_photo_upload(client):
     assert img.startswith("/media/dish-") and img.endswith(".png")
     assert client.get(img).content == png
     assert img in client.get("/menu").text
+
+
+# ---------------------------------------------------------------- collection only, partners, tracked stock
+
+def test_collection_only_default_and_partner_orders(client):
+    assert shop.setting("offers_delivery") is False
+    html = client.get("/checkout").text
+    assert 'value="delivery"' not in html
+    db.set_setting("partners", {"ubereats": {"on": True, "url": "https://ubereats.com/aarzu", "commission": 30},
+                                "deliveroo": {"on": False, "url": "", "commission": 25}, "justeat": {"on": False, "url": "", "commission": 0}})
+    assert "ubereats.com/aarzu" in client.get("/menu").text
+    key = db.get_setting("partner_key")
+    body = {"partner": "ubereats", "items": [{"dish": "Dam Pukh", "portion": "family", "qty": 1}], "name": "Sam", "date": day(), "time": "19:00",
+            "reference": "UE-123", "total": 40}
+    assert client.post("/api/partner-orders", json=body).status_code == 401
+    r = client.post("/api/partner-orders", json=body, headers={"X-Partner-Key": key})
+    assert r.status_code == 200 and r.json()["commission"] == 12.0
+    o = shop.get_order(r.json()["order_id"])
+    assert o["payment_method"] == "partner" and o["partner"] == "ubereats"
+    from pashtoon_site import accounts
+    inc = accounts.income_statement(day(-1), day(3))
+    assert inc["total_income"] == 40 and any(x["code"] == "6600" and x["amount"] == 12 for x in inc["overheads"])
+
+
+def test_only_measurable_ingredients_are_tracked(client):
+    assert "consumables" in shop.record_purchase("Garam masala", 100, "g", 3)
+    shop.record_purchase("Lamb", 2, "kg", 30)
+    names = [i["name"] for i in shop.ingredients()]
+    assert "Lamb" in names and "Garam masala" not in names
+    assert [i["name"] for i in shop.ingredients(tracked=False)] == ["Garam masala"]
+    assert db.q1("SELECT account FROM expenses")["account"] == "5300"
+    shop.set_recipe(opt("Dam Pukh", "per person"), "250 g lamb\n5 g cumin\n2 g salt\n1 pcs onion")
+    rows = {r["name"]: r["tracked"] for r in shop.recipe(opt("Dam Pukh", "per person"))}
+    assert rows == {"lamb": 1, "cumin": 0, "salt": 0, "onion": 1} or rows["cumin"] == 0 and rows["onion"] == 1
+    o = shop.place_order([{"option_id": opt("Dam Pukh", "per person"), "qty": 2}], "A", "07700900003", "collection", day(), "18:00", "cash")
+    sl = shop.shopping_list(day(), day())
+    assert [r["name"] for r in sl["rows"]] == ["onion"]      # lamb is already in stock; spices are not listed
+    assert "cumin" in sl["check"] and "salt" in sl["check"]
+    with pytest.raises(shop.ShopError, match="isn't counted"):
+        shop.write_off("cumin", 1, "g", "spoiled")
+
+
+# ---------------------------------------------------------------- accounts
+
+def test_books_balance_and_reports_export(client):
+    from pashtoon_site import accounts, reports
+    t = shop.today()
+    accounts.quick_journal("capital", t, 500)
+    shop.record_purchase("Lamb", 2, "kg", 40)
+    shop.add_expense(t, "Gas and electric", "Gas", 20)
+    shop.add_expense(t, "Packaging", "Trays on credit", 10, paid_from="2110")
+    o = shop.place_order([{"option_id": opt("Dam Pukh", "family"), "qty": 1}], "A", "07700900004", "collection", day(), "18:00", "cash")
+    shop.set_payment(o["id"], "paid")
+    shop.set_recipe(opt("Dam Pukh", "family"), "1000 g lamb")
+    shop.set_status(o["id"], "cooking")
+    end = day(3)
+    tb = accounts.trial_balance(end)
+    assert tb["balanced"] and tb["debit"] == tb["credit"]
+    inc = accounts.income_statement(t, end)
+    assert inc["total_income"] == 40 and inc["net_profit"] == 40 - 20 - 10 - 20      # lamb used: 1 kg at £20
+    bs = accounts.balance_sheet(end)
+    assert bs["balanced"] and bs["total_equity"] == 500 + inc["net_profit"]
+    cf = accounts.cash_flow(t, end)
+    assert cf["balanced"] and cf["closing"] == 500 - 40 - 20 + 40
+    with pytest.raises(shop.ShopError, match="equal"):
+        accounts.add_journal(t, "bad", [("1110", 5, 0), ("3100", 0, 4)])
+    tax = accounts.tax_summary()
+    assert tax["turnover"] == 40 and tax["income_tax"] == 0 and tax["vat_left"] > 0
+    for kind in list(reports.REPORTS) + ["all"]:
+        assert reports.excel(kind, t, end)[:2] == b"PK" and reports.pdf(kind, t, end)[:4] == b"%PDF"
+
+
+def test_accounts_pages_and_downloads(client):
+    login(client)
+    for report in ["income", "balance", "cashflow", "trial", "tax", "journal", "chart"]:
+        assert client.get(f"/owner/accounts?report={report}").status_code == 200, report
+    r = client.get("/owner/accounts/export/all.xlsx")
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    r = client.get("/owner/accounts/export/income.pdf?period=tax_year")
+    assert r.content[:4] == b"%PDF"
+    r = client.post("/owner/accounts/journal", data={"csrf": csrf(client, "/owner/accounts"), "kind": "drawings", "amount": "50", "date": shop.today()})
+    assert "error" not in r.headers["location"]
+    assert "Money taken out" in client.get("/owner/accounts?report=journal").text
+    client.get("/logout") if False else None
+
+
+# ---------------------------------------------------------------- the assistant: menu, recipes, media, other AI companies
+
+def test_owner_assistant_edits_menu_recipes_and_media(client):
+    login(client)
+    agent.set_client(FakeClaude([
+        [{"type": "tool_use", "id": "a1", "name": "add_menu_item", "input": {"name": "Lamb Biryani", "section": "mains", "description": "Fragrant.",
+                                                                             "portions": [{"label": "Per person", "price": 14}]}}],
+        [{"type": "tool_use", "id": "a2", "name": "save_info", "input": {"topic": "Tiffin", "text": "Mon to Fri lunch boxes, from £8."}}],
+        [{"type": "text", "text": "Done."}],
+    ]))
+    r = client.post("/api/owner/chat", json={"text": "add lamb biryani £14, and tiffin is mon-fri lunch boxes from £8"},
+                    headers={"X-CSRF": csrf(client, "/owner/assistant")}).json()
+    assert r["reply"] == "Done."
+    o = shop.find_option("Lamb Biryani")
+    assert o["price"] == 14
+    agent.set_client(FakeClaude([
+        [{"type": "tool_use", "id": "b1", "name": "set_recipe", "input": {"option_id": o["id"], "ingredients": "200 g lamb\n150 g rice\n5 g cumin"}}],
+        [{"type": "tool_use", "id": "b2", "name": "update_price", "input": {"option_id": o["id"], "price": 15}}],
+        [{"type": "tool_use", "id": "b3", "name": "set_ingredient_tracked", "input": {"ingredient": "rice", "tracked": False}}],
+        [{"type": "text", "text": "Done."}],
+    ]))
+    client.post("/api/owner/chat", json={"text": "recipe"}, headers={"X-CSRF": csrf(client, "/owner/assistant")})
+    assert shop.option(o["id"])["price"] == 15
+    assert {r["name"]: r["tracked"] for r in shop.recipe(o["id"])}["cumin"] == 0
+    assert {r["name"]: r["tracked"] for r in shop.recipe(o["id"])}["rice"] == 0
+    # a customer's assistant now knows the tiffin details and gets the skill files
+    fake = FakeClaude([[{"type": "text", "text": "Hi"}]])
+    agent.set_client(fake)
+    client.post("/api/chat/send", json={"text": "tiffin?"}, headers={"X-CSRF": csrf(client)})
+    system = fake.calls[0]["system"]
+    assert "Mon to Fri lunch boxes" in system and "Skill: customer-service" in system and "COLLECTION ONLY" in system
+    # photo sent to the assistant is saved to the library and shown to the model, then not stored
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
+    fake = FakeClaude([[{"type": "tool_use", "id": "c1", "name": "list_media", "input": {}}], [{"type": "text", "text": "Which dish is it for?"}]])
+    agent.set_client(fake)
+    r = client.post("/api/owner/chat", data={"text": "new photo"}, files=[("files", ("x.png", png, "image/png"))],
+                    headers={"X-CSRF": csrf(client, "/owner/assistant")}).json()
+    assert r["media"][0]["kind"] == "image" and "media id" in json.dumps(fake.calls[0]["messages"])
+    assert any(b.get("type") == "image" for b in fake.calls[0]["messages"][-1]["content"])
+    assert "base64" not in db.q1("SELECT messages FROM owner_chat ORDER BY id DESC")["messages"]
+    fake = FakeClaude([[{"type": "tool_use", "id": "d1", "name": "set_dish_media", "input": {"item_id": o["item_id"], "kind": "image", "media_id": r["media"][0]["id"]}}],
+                       [{"type": "text", "text": "Set."}]])
+    agent.set_client(fake)
+    client.post("/api/owner/chat", json={"text": "use it for the biryani"}, headers={"X-CSRF": csrf(client, "/owner/assistant")})
+    assert db.q1("SELECT image FROM menu_items WHERE id=?", (o["item_id"],))["image"] == r["media"][0]["url"]
+
+
+def test_assistant_can_run_on_chatgpt(client, monkeypatch):
+    from pashtoon_site import llm
+    db.set_setting("ai_provider", "openai")
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "test")
+    assert llm.configured() and llm.provider() == "openai"
+    sent = []
+    replies = [{"choices": [{"message": {"content": None, "tool_calls": [{"id": "call_1", "type": "function",
+                 "function": {"name": "get_menu", "arguments": "{}"}}]}}]},
+               {"choices": [{"message": {"content": "Hi, I'm Zara, an AI assistant."}}]}]
+
+    class Resp:
+        def __init__(self, j): self.j = j
+        def raise_for_status(self): pass
+        def json(self): return self.j
+
+    def post(url, json=None, **kw):
+        sent.append((url, json))
+        return Resp(replies.pop(0))
+    monkeypatch.setattr(llm.httpx, "post", post)
+    r = client.post("/api/chat/send", json={"text": "hello"}, headers={"X-CSRF": csrf(client)}).json()
+    assert "AI assistant" in r["lines"][-1]["text"]
+    assert sent[0][0].endswith("/chat/completions") and sent[0][1]["tools"][0]["function"]["name"] == "get_menu"
+    assert sent[1][1]["messages"][-1]["role"] == "tool" and sent[1][1]["messages"][-2]["tool_calls"][0]["id"] == "call_1"
+
+
+# ---------------------------------------------------------------- tiffin and dish videos
+
+def test_tiffin_enquiry_and_dish_video(client):
+    menu = client.get("/menu").text
+    assert "Tiffin" in menu and "Ask about tiffin service" in menu and 'data-option="' in menu
+    login(client)
+    it = db.q1("SELECT * FROM menu_items WHERE slug='dampukh'")
+    mp4 = b"\x00\x00\x00\x18ftypmp42" + b"0" * 200
+    data = {"csrf": csrf(client, "/owner/menu"), "name": it["name"], "category": "mains", "description": "x", "notice_hours": "24", "available": "1"}
+    for o in shop.item(it["id"])["options"]:
+        i = o["sort"]
+        data.update({f"opt_id_{i}": str(o["id"]), f"opt_label_{i}": o["label"], f"opt_price_{i}": str(o["price"])})
+    r = client.post(f"/owner/menu/{it['id']}", data=data, files={"video": ("clip.mp4", mp4, "video/mp4")})
+    assert "error" not in r.headers["location"], r.headers["location"]
+    url = db.q1("SELECT video FROM menu_items WHERE id=?", (it["id"],))["video"]
+    assert url.endswith(".mp4") and client.get(url).content == mp4
+    assert "data-video" in client.get("/menu").text
+    r = client.post(f"/owner/menu/{it['id']}", data=data, files={"video": ("clip.mp4", b"not a video at all", "video/mp4")})
+    assert "error" in r.headers["location"]
+    db.set_setting("promo_item_id", it["id"])
+    client.cookies.clear()
+    assert "window.PROMO" in client.get("/").text

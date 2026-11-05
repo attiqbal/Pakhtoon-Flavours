@@ -288,3 +288,14 @@ body.has-basket .chat-fab { bottom: 86px; }
 .kds .totals { padding: 0 16px 24px; }
 .kds .totals div { display: inline-block; background: #182018; border-radius: 99px; padding: 8px 14px; margin: 4px; font-size: 15px; }
 .kds .totals b { color: var(--lime); }
+
+/* dish videos */
+.dish .media { position: relative; }
+.watch { position: absolute; left: 12px; bottom: 12px; background: var(--lime); color: var(--forest); border: 0; border-radius: 999px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+.vmodal { position: fixed; inset: 0; background: rgba(0, 20, 16, .72); z-index: 90; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.vmodal.hide { display: none; }
+.vbox { background: var(--cream); border-radius: 24px; overflow: hidden; width: min(440px, 100%); position: relative; }
+.vbox video { width: 100%; max-height: 70vh; background: #000; display: block; }
+.vbox #vclose { position: absolute; right: 10px; top: 8px; z-index: 2; background: rgba(0,0,0,.5); color: #fff; border: 0; border-radius: 50%; width: 34px; height: 34px; font-size: 22px; cursor: pointer; }
+.vcta { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; }
+.chat-form label.btn { display: inline-flex; align-items: center; justify-content: center; }

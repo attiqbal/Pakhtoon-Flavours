@@ -1,0 +1,105 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Accounts{% endblock %}
+{% macro amt(x) %}{{ '{:,.2f}'.format(x) if x >= 0 else '-' ~ '{:,.2f}'.format(-x) }}{% endmacro %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">{{ start }} to {{ end }}</span><h1>Accounts</h1></div>
+  <div class="row">{% for k, label in [('week','This week'),('month','This month'),('last_month','Last month'),('year','This year'),('tax_year','Tax year'),('all','All time')] %}<a class="btn small {% if period == k %}dark{% endif %}" href="?report={{ report }}&period={{ k }}">{{ label }}</a>{% endfor %}</div></div>
+
+<div class="tabs" style="margin-bottom:18px">{% for k, label in rep.items() %}<a href="?report={{ k }}&start={{ start }}&end={{ end }}" {% if k == report %}class="on"{% endif %}>{{ label }}</a>{% endfor %}</div>
+
+<div class="grid two" style="align-items:start">
+<div class="card">
+  <h2>{{ rep[report] }}</h2>
+  {% if report == 'income' %}
+    {% macro block(title, rows, total_label, total) %}<div class="summary-line total"><span>{{ title }}</span><span></span></div>
+      {% for r in rows %}<div class="summary-line"><span>{{ r.code }} · <a href="?report=income&start={{ start }}&end={{ end }}&account={{ r.code }}">{{ r.name }}</a></span><span>{{ money(r.amount) }}</span></div>{% else %}<div class="small faint">Nothing in this period.</div>{% endfor %}
+      <div class="summary-line"><b>{{ total_label }}</b><b>{{ money(total) }}</b></div>{% endmacro %}
+    {{ block('Income', data.income, 'Total income', data.total_income) }}
+    {{ block('Cost of sales', data.cogs, 'Total cost of sales', data.total_cogs) }}
+    <div class="summary-line total"><span>Gross profit <span class="faint small">({{ data.gross_margin }}%)</span></span><span>{{ money(data.gross_profit) }}</span></div>
+    {{ block('Overheads', data.overheads, 'Total overheads', data.total_overheads) }}
+    <div class="summary-line total"><span>Net profit <span class="faint small">({{ data.net_margin }}%)</span></span><span>{{ money(data.net_profit) }}</span></div>
+  {% elif report == 'balance' %}
+    <p class="small muted">As at {{ end }}</p>
+    {% for head, groups, tl, tv in [('Assets', data.assets, 'Total assets', data.total_assets), ('Liabilities', data.liabilities, 'Total liabilities', data.total_liabilities)] %}
+      <div class="summary-line total"><span>{{ head }}</span><span></span></div>
+      {% for g in groups if g.rows %}<div class="small faint" style="margin-top:6px">{{ g.name }}</div>
+        {% for r in g.rows %}<div class="summary-line"><span>{{ r.code }} · {{ r.name }}</span><span>{{ money(r.amount) }}</span></div>{% endfor %}{% endfor %}
+      <div class="summary-line"><b>{{ tl }}</b><b>{{ money(tv) }}</b></div>
+    {% endfor %}
+    <div class="summary-line total"><span>Net assets</span><span>{{ money(data.net_assets) }}</span></div>
+    <div class="summary-line total"><span>Equity</span><span></span></div>
+    {% for r in data.equity.rows %}<div class="summary-line"><span>{{ r.name }}</span><span>{{ money(r.amount) }}</span></div>{% endfor %}
+    <div class="summary-line"><b>Total equity</b><b>{{ money(data.total_equity) }}</b></div>
+    {% if not data.balanced %}<div class="alert error">The balance sheet doesn't balance. Please tell your accountant.</div>{% endif %}
+  {% elif report == 'cashflow' %}
+    <div class="summary-line"><b>Cash at the start</b><b>{{ money(data.opening) }}</b></div>
+    {% for s in data.sections %}<div class="summary-line total"><span>{{ s.name }}</span><span>{{ money(s.total) }}</span></div>
+      {% for r in s.rows %}<div class="summary-line small"><span>{{ r.name }}</span><span>{{ money(r.amount) }}</span></div>{% endfor %}{% endfor %}
+    <div class="summary-line total"><span>Net change in cash</span><span>{{ money(data.net) }}</span></div>
+    <div class="summary-line"><b>Cash at the end</b><b>{{ money(data.closing) }}</b></div>
+    <p class="small muted">Cash in hand, bank and Stripe together.</p>
+  {% elif report == 'trial' %}
+    <table class="list"><thead><tr><th>Code</th><th>Account</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead><tbody>
+    {% for r in data.rows %}<tr><td>{{ r.code }}</td><td><a href="?report=trial&start={{ start }}&end={{ end }}&account={{ r.code }}">{{ r.name }}</a></td><td style="text-align:right">{{ money(r.debit) if r.debit else '' }}</td><td style="text-align:right">{{ money(r.credit) if r.credit else '' }}</td></tr>{% endfor %}
+    <tr><td></td><td><b>Total</b></td><td style="text-align:right"><b>{{ money(data.debit) }}</b></td><td style="text-align:right"><b>{{ money(data.credit) }}</b></td></tr></tbody></table>
+    {% if data.balanced %}<p class="small muted">Debits equal credits.</p>{% else %}<div class="alert error">Debits and credits differ.</div>{% endif %}
+  {% elif report == 'tax' %}
+    <p class="small muted">Tax year {{ data.year }} · {{ data.start }} to {{ data.end }} · cash basis (money in when it arrives, costs when paid)</p>
+    <div class="summary-line"><span>Turnover (money received)</span><b>{{ money(data.turnover) }}</b></div>
+    {% for r in data.rows if r.amount %}<div class="summary-line small"><span>{{ r.name }}</span><span>−{{ money(r.amount) }}</span></div>{% endfor %}
+    <div class="summary-line"><span>Total allowable expenses</span><b>−{{ money(data.expenses) }}</b></div>
+    {% if data.allowances %}<div class="summary-line"><span>Equipment (100% allowance)</span><span>−{{ money(data.allowances) }}</span></div>{% endif %}
+    <div class="summary-line total"><span>Net profit</span><span>{{ money(data.profit) }}</span></div>
+    {% if data.use_trading_allowance %}<p class="small">The £1,000 trading allowance beats your expenses, so use it instead: taxable profit {{ money(data.taxable) }}.</p>{% endif %}
+    <div class="summary-line"><span>Income tax (if this is your only income)</span><span>{{ money(data.income_tax) }}</span></div>
+    <div class="summary-line"><span>Class 4 National Insurance</span><span>{{ money(data.class4) }}</span></div>
+    <div class="summary-line total"><span>Estimated to pay</span><span>{{ money(data.total_tax) }}</span></div>
+    <p class="small">Put aside about <b>{{ money(data.set_aside) }}</b> a month.</p>
+    <h2 style="margin-top:20px">VAT check</h2>
+    <div class="summary-line"><span>Turnover, last 12 months</span><span>{{ money(data.vat_rolling) }}</span></div>
+    <div class="summary-line"><span>Registration threshold</span><span>{{ money(data.vat_threshold) }}</span></div>
+    <div class="summary-line total"><span>Room left</span><span>{{ money(data.vat_left) }}</span></div>
+    {% if data.vat_warn %}<div class="alert info">You're close to the VAT threshold. Talk to an accountant.</div>{% endif %}
+    <h2 style="margin-top:20px">By quarter</h2>
+    {% for qt in data.quarters %}<div class="summary-line small"><span>{{ qt.start }} to {{ qt.end }}</span><span>in {{ money(qt.turnover) }} · out {{ money(qt.expenses) }}</span></div>{% endfor %}
+    <p class="small muted" style="margin-top:12px">An estimate using {{ data.rates_year }} rates for a sole trader with no other income. Your allowances and other income change the real bill, so check with an accountant or HMRC before filing.</p>
+  {% elif report == 'journal' %}
+    {% for j in data.journals %}<div style="margin-bottom:12px"><div class="small"><b>{{ j.date }}</b> · {{ j.ref }} · {{ j.memo }}
+      {% if j.kind == 'manual' %}<form method="post" action="/owner/accounts/journal/{{ j.id }}/delete" style="display:inline" onsubmit="return confirm('Delete this journal?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link tiny">delete</button></form>{% endif %}</div>
+      {% for a, dr, cr in j.lines %}<div class="summary-line small"><span>&nbsp;&nbsp;{{ a }} {{ acc.name(a) }}</span><span>{{ money(dr) if dr else '' }}{{ ' / ' ~ money(cr) if cr else '' }}</span></div>{% endfor %}</div>
+    {% else %}<p class="muted">No journals in this period.</p>{% endfor %}
+  {% else %}
+    <table class="list"><thead><tr><th>Code</th><th>Account</th><th>Type</th></tr></thead><tbody>
+    {% for c, n, t, p in data.chart %}<tr><td>{{ c }}</td><td>{% if not p %}<b>{{ n }}</b>{% else %}{{ '&nbsp;&nbsp;&nbsp;'|safe if acc.ACCOUNTS[p].parent else '&nbsp;&nbsp;'|safe }}{{ n }}{% endif %}</td><td class="small faint">{{ acc.TYPE_NAMES[t] }}</td></tr>{% endfor %}</tbody></table>
+  {% endif %}
+</div>
+
+<div class="stack">
+  <div class="card sage">
+    <h2>Download</h2>
+    <p class="small">For you or your accountant. The date range is the one shown.</p>
+    {% set q = '?start=' ~ start ~ '&end=' ~ end %}
+    <div class="row" style="margin-bottom:10px"><a class="btn primary small" href="/owner/accounts/export/all.xlsx{{ q }}">Excel: everything</a><a class="btn primary small" href="/owner/accounts/export/all.pdf{{ q }}">PDF: full pack</a></div>
+    {% for k, label in rep.items() %}<div class="summary-line small"><span>{{ label }}</span><span><a href="/owner/accounts/export/{{ k }}.xlsx{{ q }}">Excel</a> · <a href="/owner/accounts/export/{{ k }}.pdf{{ q }}">PDF</a></span></div>{% endfor %}
+  </div>
+  {% if ledger %}<div class="card"><h2>{{ ledger.code }} · {{ ledger.name }}</h2>
+    <div class="summary-line small"><span>Opening</span><span>{{ money(ledger.opening) }}</span></div>
+    {% for r in ledger.rows %}<div class="summary-line small"><span>{{ r.date }} · {{ r.memo }} <span class="faint">{{ r.ref }}</span></span><span>{{ money(r.debit) if r.debit else '−' ~ money(r.credit) }} → {{ money(r.balance) }}</span></div>{% endfor %}
+    <div class="summary-line total"><span>Closing</span><span>{{ money(ledger.closing) }}</span></div></div>{% endif %}
+  <form method="post" action="/owner/accounts/journal" class="card sand"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Record something else</h2>
+    <p class="small muted">Sales, payments, stock and spending are booked automatically. Use this for the rest.</p>
+    <div class="field"><label>What happened</label><select name="kind">{% for k, v in quick.items() %}<option value="{{ k }}">{{ v[0] }}</option>{% endfor %}</select></div>
+    <div class="grid two" style="gap:10px"><div class="field"><label>Date</label><input type="date" name="date" value="{{ today }}"></div><div class="field"><label>Amount £</label><input name="amount" inputmode="decimal" required></div></div>
+    <div class="field"><label>Note (optional)</label><input name="memo"></div>
+    <button class="btn primary block">Record</button>
+  </form>
+  <details class="card"><summary><b>Advanced: write a journal</b></summary>
+    <form method="post" action="/owner/accounts/journal"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="custom">
+      <div class="grid two" style="gap:10px;margin-top:10px"><div class="field"><label>Date</label><input type="date" name="date" value="{{ today }}"></div><div class="field"><label>Memo</label><input name="memo" required></div></div>
+      {% for i in range(4) %}<div class="grid" style="grid-template-columns:2fr 1fr 1fr;gap:6px;margin-bottom:6px"><select name="acct_{{ i }}" aria-label="Account"><option value="">Account…</option>{% for a in postings %}<option value="{{ a.code }}">{{ a.code }} {{ a.name }}</option>{% endfor %}</select><input name="dr_{{ i }}" placeholder="Debit" aria-label="Debit" inputmode="decimal"><input name="cr_{{ i }}" placeholder="Credit" aria-label="Credit" inputmode="decimal"></div>{% endfor %}
+      <button class="btn small">Save journal</button></form></details>
+</div>
+</div>
+{% endblock %}

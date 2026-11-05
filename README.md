@@ -21,9 +21,10 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Calendar**: month view of orders, close or reopen days, plus a private calendar link that puts every order in Google Calendar or her iPhone calendar automatically.
 - **Kitchen screen** (`/kitchen`): big tickets in To cook / Cooking / Ready columns, today or tomorrow, totals of what's still to cook, customer notes, and a chime for new orders. A private link logs a kitchen tablet in without her password.
 - **Menu**: prices, portions, descriptions, notice, on/off, dish photos (upload from her phone), and recipes (ingredients for one portion) with cost and margin.
-- **Stock**: purchases, write-offs with a reason (spoiled, out of date, dropped, leftover...), stock counts, low-stock warnings, history, and a shopping list for any dates worked out from upcoming orders and recipes. Starting to cook an order takes its ingredients out of stock.
+- **Stock**: only things that can be measured are counted (meat, rice, oil, onions...). Spices, herbs and other small items are *not* tracked: buying them is logged as a spending line (account 5300), and the shopping list just reminds her to check the cupboard. Purchases, write-offs with a reason (spoiled, out of date, dropped, leftover...), stock counts, low-stock warnings, history, and a shopping list for any dates worked out from upcoming orders and recipes. Starting to cook an order takes its ingredients out of stock.
 - **Money**: sales, unpaid, spending, profit for this week, this month, last month or this year; best sellers; spending log.
-- **Assistant**: chat with the AI to do admin ("Painda per person is now £14", "close next Friday", "I bought 5kg lamb for £45", "what's the shopping list for Saturday?").
+- **Accounts** (like Xero): a chart of accounts with heading and sub-accounts, double-entry books built automatically from orders, payments, stock and spending, plus manual journals (money put in, drawings, equipment, delivery-app payouts, Stripe fees). Reports: income statement, balance sheet, cash flow, trial balance, journal, general ledger, and a **tax summary** (Self Assessment self-employment figures, estimated income tax and Class 4 NI, VAT-threshold check, quarterly figures). Every report downloads as **Excel** and **PDF**, and there is a one-click full pack of each.
+- **Assistant**: a chat bubble on every dashboard page (and on the public site while she is logged in) and a full page. It can add dishes, change prices, descriptions, sections and portions, set recipes per portion, mark ingredients tracked or not, take photos and videos she sends it and attach them to dishes, save facts customers should be told (tiffin plans, holidays), flip ordering switches, and read the accounts. Works on Claude or ChatGPT (Settings). Examples: ("Painda per person is now £14", "close next Friday", "I bought 5kg lamb for £45", "what's the shopping list for Saturday?").
 - **Settings**: taking orders on/off, hours, daily limit, delivery bands, bank details, review link, banner message, AI on/off and name, password, new kitchen/calendar links.
 - **WhatsApp, Instagram and Facebook Messenger (optional)**: the same assistant answers on Meta's apps through one webhook, `/webhook/meta`, and those chats land in Messages too. Settings shows which are connected.
 
@@ -43,11 +44,23 @@ To switch on the AI assistant, put a Claude API key from console.anthropic.com i
 
 The menu is loaded from her printed menu on the first start (no sample orders or customers). After that she edits it in the dashboard. All data lives in `data/pashtoon_site.db`.
 
+## Collection, delivery and delivery apps
+
+Collection only is the default. Delivery by her is one tick in Settings. Uber Eats, Deliveroo and Just Eat can be switched on in Settings with a link to her page (customers see "Also on..."), and their orders can be sent to `POST /api/partner-orders` with the secret from Settings in the `X-Partner-Key` header (for example through Zapier). Each is booked as owed by the app, less its commission.
+
+## Which AI
+
+Claude Opus 5.5 by default. In Settings (or `.env`) pick Claude or ChatGPT (`AI_PROVIDER=openai`, `OPENAI_API_KEY`), and any model name. Any OpenAI-compatible service works by setting `OPENAI_BASE_URL`. The assistant's playbooks are plain markdown files in `pashtoon_site/skills/` (customer service, menu editing, bookkeeping, stock). Edit or add one to teach it something.
+
+## Dish videos
+
+Each dish can have a video (Menu > dish page, or send one to the assistant): a "Watch" button on the menu card, and one dish can pop up as an ad once per visit (Settings > AI assistant > popup).
+
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q              # 25 tests, no network or API key needed
+pytest -q              # 32 tests, no network or API key needed
 ```
 
 ## How it fits together
@@ -62,6 +75,10 @@ pashtoon_site/
   db.py          SQLite
   geo.py         UK postcode distance (postcodes.io)
   meta.py        optional WhatsApp, Instagram and Messenger
+  accounts.py    double-entry books, financial statements, tax summary
+  reports.py     Excel and PDF versions of every statement
+  llm.py         Claude or ChatGPT behind one interface
+  skills.py      loads the playbooks in skills/
   payments.py    optional Stripe Checkout (cards, Apple Pay, Google Pay)
   templates/, static/   pages, styles (cream, deep green, lime) and the small amount of JavaScript
 ```

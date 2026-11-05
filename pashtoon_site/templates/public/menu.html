@@ -4,6 +4,7 @@
 <div class="wrap" style="padding-top:40px;padding-bottom:120px">
   <span class="eyebrow">Pre-order menu · 24 hours' notice</span>
   <h1>Our menu</h1>
+  {% if partners %}<p class="muted">{% if not st.offers_delivery %}Collection only for now. {% endif %}Also on: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
   {% if not st.accepting_orders %}<div class="alert info">We're not taking new orders right now. You can still look, and chat with us below.</div>{% endif %}
   <div class="tabs" id="tabs">{% for key, label, items in sections %}<a href="#s-{{ key }}" data-tab="{{ key }}" {% if loop.first %}class="on"{% endif %}>{{ label.split(' · ')[0] }}</a>{% endfor %}</div>
 
@@ -14,9 +15,11 @@
       {% for it in items %}
       <article class="dish" id="{{ it.slug }}">
         {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
-        {% if it.image %}<img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">{% else %}<div class="noimg">{{ it.name }}</div>{% endif %}
+        <div class="media">{% if it.image %}<img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">{% else %}<div class="noimg">{{ it.name }}</div>{% endif %}
+          {% if it.video %}<button type="button" class="watch" data-video="{{ it.video }}" data-title="{{ it.name }}" aria-label="Watch {{ it.name }}">▶ Watch</button>{% endif %}</div>
         <div class="body">
           <h3>{{ it.name }}</h3><p>{{ it.description }}</p>
+          {% if it.enquiry %}<button type="button" class="btn primary" data-ask="{{ it.name }}">Ask about {{ it.name|lower }}</button>{% endif %}
           <div class="opts">
             {% for o in it.options %}
             <div class="opt" data-option="{{ o.id }}" data-name="{{ it.name }}" data-portion="{{ o.label }}" data-price="{{ o.price }}">

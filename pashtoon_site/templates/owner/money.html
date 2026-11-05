@@ -23,11 +23,12 @@
   </div>
   <div class="stack">
     <form method="post" action="/owner/money/expense" class="card sand"><input type="hidden" name="csrf" value="{{ csrf }}">
-      <h2>Add spending</h2><p class="small muted">Packaging, gas, fees and anything that isn't ingredients. Ingredients go on the Stock page.</p>
+      <h2>Add spending</h2><p class="small muted">Packaging, gas, fees, spices and herbs, and anything that isn't measured ingredients. Meat, rice and the like go on the Stock page.</p>
       <div class="grid two" style="gap:10px"><div class="field"><label>Date</label><input type="date" name="date" value="{{ today }}"></div>
         <div class="field"><label>Amount £</label><input name="amount" inputmode="decimal" required></div></div>
       <div class="field"><label>Category</label><select name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
       <div class="field"><label>What for</label><input name="description" required placeholder="Foil trays from Costco"></div>
+      <div class="field"><label>Paid</label><select name="paid_from">{% for k, v in paid_from.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
       <button class="btn primary block">Add</button>
     </form>
     <div class="card"><h2>Spending in this period</h2>

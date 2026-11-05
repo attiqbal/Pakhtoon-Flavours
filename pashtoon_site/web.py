@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import agent, config, db, menu_data, messages, meta, payments, shop
+from . import accounts, agent, config, db, llm, menu_data, messages, meta, payments, reports, shop
 from .shop import ShopError
 
 log = logging.getLogger(__name__)
@@ -73,9 +73,18 @@ def need_owner(request: Request) -> None:
         raise HTTPException(303, headers={"Location": "/owner/login?next=" + urlquote(request.url.path)})
 
 
+def path_is_private(path: str) -> bool:
+    return path.startswith(("/owner", "/kitchen", "/checkout", "/o/"))
+
+
 def render(request: Request, name: str, **ctx) -> HTMLResponse:
     ctx.update(request=request, csrf=csrf_token(request), st=shop.settings(), owner=is_owner(request),
                path=request.url.path, base_url=config.BASE_URL)
+    ctx["partners"] = shop.partners_on()
+    pid = int(shop.setting("promo_item_id") or 0)
+    ctx["promo"] = None
+    if pid and not path_is_private(request.url.path):
+        ctx["promo"] = db.q1("SELECT * FROM menu_items WHERE id=? AND available=1 AND video IS NOT NULL", (pid,))
     if is_owner(request):
         ctx.setdefault("alert_count", shop.unseen_alerts())
         ctx.setdefault("waiting_chats", db.q1("SELECT COUNT(*) n FROM conversations WHERE needs_owner=1")["n"])
@@ -99,23 +108,55 @@ def _float(x, default=None):
 
 
 IMAGE_TYPES = {b"\xff\xd8\xff": "jpg", b"\x89PNG": "png", b"RIFF": "webp"}
+MEDIA_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp", "mp4": "video/mp4", "webm": "video/webm"}
 MAX_PHOTO = 8 * 1024 * 1024
+MAX_VIDEO = 60 * 1024 * 1024
+
+
+def sniff(data: bytes) -> tuple[str, str] | None:
+    """(kind, extension) from the file's first bytes, so a renamed file can't sneak in. None if not an allowed type."""
+    for magic, ext in IMAGE_TYPES.items():
+        if data.startswith(magic) and (ext != "webp" or data[8:12] == b"WEBP"):
+            return "image", ext
+    if data[4:8] == b"ftyp":
+        return "video", "mp4"
+    if data.startswith(b"\x1a\x45\xdf\xa3"):
+        return "video", "webm"
+    return None
+
+
+async def save_media(upload, allow_video: bool = True, title: str = "") -> dict | None:
+    """A photo or video from the owner: checked by its real content, kept in data/uploads and added to her media library.
+    Returns {'id', 'kind', 'url', 'path', 'media_type', 'title'}."""
+    if not upload or not getattr(upload, "filename", ""):
+        return None
+    head = await upload.read(64)
+    found = sniff(head)
+    if not found or (found[0] == "video" and not allow_video):
+        raise ShopError("Please upload a JPEG, PNG or WebP photo" + (", or an MP4 or WebM video." if allow_video else "."))
+    kind, ext = found
+    limit = MAX_VIDEO if kind == "video" else MAX_PHOTO
+    name = f"{'dish' if kind == 'image' else 'clip'}-{secrets.token_hex(8)}.{ext}"
+    path = os.path.join(config.UPLOAD_DIR, name)
+    size = len(head)
+    with open(path, "wb") as fh:
+        fh.write(head)
+        while chunk := await upload.read(1024 * 1024):
+            size += len(chunk)
+            if size > limit:
+                fh.close()
+                os.remove(path)
+                raise ShopError(f"That file is too big. Photos can be up to 8 MB and videos up to 60 MB.")
+            fh.write(chunk)
+    title = title or (upload.filename or "")[:80]
+    mid = db.execute("INSERT INTO media(kind,url,title,created_at) VALUES(?,?,?,?)", (kind, f"/media/{name}", title, shop.iso_now()))
+    return {"id": mid, "kind": kind, "url": f"/media/{name}", "path": path, "media_type": MEDIA_TYPES[ext], "title": title}
 
 
 async def save_photo(upload) -> str | None:
-    """A dish photo from the owner: checked to really be a JPEG, PNG or WebP, then kept in data/uploads."""
-    if not upload or not getattr(upload, "filename", ""):
-        return None
-    data = await upload.read(MAX_PHOTO + 1)
-    if len(data) > MAX_PHOTO:
-        raise ShopError("That photo is too big. Please use one under 8 MB.")
-    ext = next((e for magic, e in IMAGE_TYPES.items() if data.startswith(magic)), None)
-    if not ext or (ext == "webp" and data[8:12] != b"WEBP"):
-        raise ShopError("Please upload a JPEG, PNG or WebP photo.")
-    name = f"dish-{secrets.token_hex(8)}.{ext}"
-    with open(os.path.join(config.UPLOAD_DIR, name), "wb") as fh:
-        fh.write(data)
-    return f"/media/{name}"
+    """A dish photo from the owner (kept for older callers)."""
+    m = await save_media(upload, allow_video=False)
+    return m["url"] if m else None
 
 
 def wa_link(phone: str, text: str) -> str:
@@ -612,7 +653,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             for o in it["options"]:
                 o["recipe"] = shop.recipe_text(o["id"])
                 o["cost"] = shop.recipe_cost(o["id"])
-        return render(request, "owner/menu_edit.html", it=it)
+        return render(request, "owner/menu_edit.html", it=it, library=db.q("SELECT * FROM media ORDER BY id DESC LIMIT 60"))
 
     @app.post("/owner/menu/{item_id}")
     async def menu_edit(request: Request, item_id: str):
@@ -628,18 +669,30 @@ def create_app(db_path: str | None = None) -> FastAPI:
             opts.append((int(oid) if oid and oid.isdigit() else None, label, _float(f.get(f"opt_price_{idx}"))))
         try:
             new_id = shop.save_item(None if item_id == "new" else int(item_id), f.get("name", ""), f.get("category", "mains"),
-                                    f.get("description", ""), int(f.get("notice_hours") or 24), opts, bool(f.get("available")))
+                                    f.get("description", ""), int(f.get("notice_hours") or 24), opts, bool(f.get("available")),
+                                    enquiry=bool(f.get("enquiry")))
             for o in shop.menu(include_hidden=True):
                 if o["id"] == new_id:
                     for opt in o["options"]:
                         txt = f.get(f"recipe_{opt['id']}")
                         if txt is not None and txt.strip() != shop.recipe_text(opt["id"]).strip():
                             shop.set_recipe(opt["id"], txt)
-            photo = await save_photo(f.get("photo"))
+            photo = await save_media(f.get("photo"), allow_video=False)
             if photo:
-                db.execute("UPDATE menu_items SET image=? WHERE id=?", (photo, new_id))
+                db.execute("UPDATE menu_items SET image=? WHERE id=?", (photo["url"], new_id))
             elif f.get("remove_photo"):
                 db.execute("UPDATE menu_items SET image=NULL WHERE id=?", (new_id,))
+            clip = await save_media(f.get("video"))
+            if clip and clip["kind"] != "video":
+                raise ShopError("That file is a photo. Use the photo box for photos.")
+            if clip:
+                db.execute("UPDATE menu_items SET video=? WHERE id=?", (clip["url"], new_id))
+            elif f.get("remove_video"):
+                db.execute("UPDATE menu_items SET video=NULL WHERE id=?", (new_id,))
+            elif f.get("library_media"):
+                m = db.q1("SELECT * FROM media WHERE id=?", (int(f.get("library_media")),))
+                if m:
+                    db.execute(f"UPDATE menu_items SET {'video' if m['kind'] == 'video' else 'image'}=? WHERE id=?", (m["url"], new_id))
         except (ShopError, ValueError) as e:
             return back(f"/owner/menu/{item_id}", error=str(e))
         return back(f"/owner/menu/{new_id}", "Saved.")
@@ -664,8 +717,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         try:
             sl = shop.shopping_list(shop.parse_date(start).isoformat(), shop.parse_date(end).isoformat())
         except ShopError:
-            sl = {"orders": 0, "rows": [], "no_recipe": [], "total": 0}
-        return render(request, "owner/stock.html", items=shop.ingredients(), history=shop.stock_history(),
+            sl = {"orders": 0, "rows": [], "no_recipe": [], "total": 0, "check": []}
+        return render(request, "owner/stock.html", items=shop.ingredients(), untracked=shop.ingredients(tracked=False),
+                      paid_from=shop.PAID_FROM, history=shop.stock_history(),
                       sl=sl, start=start, end=end, reasons=shop.WRITE_OFF_REASONS, today=shop.today())
 
     @app.post("/owner/stock/{action}")
@@ -675,7 +729,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
         f = await request.form()
         try:
             if action == "purchase":
-                msg = shop.record_purchase(f.get("name", ""), _float(f.get("qty"), 0), f.get("unit", "g"), _float(f.get("cost"), -1), f.get("date") or "")
+                msg = shop.record_purchase(f.get("name", ""), _float(f.get("qty"), 0), f.get("unit", "g"), _float(f.get("cost"), -1), f.get("date") or "",
+                                           f.get("paid_from") or "1110")
+            elif action == "tracked":
+                msg = shop.set_tracked(f.get("ingredient", ""), bool(f.get("tracked")))
             elif action == "writeoff":
                 reason = f.get("reason", "")
                 if f.get("detail"):
@@ -703,15 +760,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         except ShopError:
             s, e = shop.period("month")
         return render(request, "owner/money.html", m=shop.summary(s, e), period=period, expenses=shop.expenses(s, e),
-                      categories=shop.EXPENSE_CATEGORIES, today=shop.today())
+                      categories=shop.EXPENSE_CATEGORIES, paid_from=shop.PAID_FROM, today=shop.today())
 
     @app.post("/owner/money/expense")
     async def money_expense(request: Request, date_: str = Form("", alias="date"), category: str = Form("Other"),
-                            description: str = Form(""), amount: str = Form("")):
+                            description: str = Form(""), amount: str = Form(""), paid_from: str = Form("1110")):
         need_owner(request)
         await check_csrf(request)
         try:
-            msg = shop.add_expense(date_ or shop.today(), category, description, _float(amount, 0))
+            msg = shop.add_expense(date_ or shop.today(), category, description, _float(amount, 0), paid_from)
         except ShopError as e:
             return back("/owner/money", error=str(e))
         return back("/owner/money", msg)
@@ -722,6 +779,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def settings_page(request: Request):
         need_owner(request)
         return render(request, "owner/settings.html", ai_on=agent.configured(), meta_status=meta.status(), meta_channels=meta.CHANNELS,
+                      models=config.MODELS, provider=llm.provider(), model=llm.model(), partners=menu_data.PARTNERS,
+                      partner_key=db.get_setting("partner_key"), partner_url=f"{config.BASE_URL}/api/partner-orders",
+                      dishes=shop.menu(), openai_on=bool(config.OPENAI_API_KEY), claude_on=bool(config.ANTHROPIC_API_KEY),
                       stripe_on=payments.configured(), stripe_webhook=bool(config.STRIPE_WEBHOOK_SECRET),
                       meta_callback=f"{config.BASE_URL}/webhook/meta", stripe_callback=f"{config.BASE_URL}/webhook/stripe",
                       kitchen_link=f"{config.BASE_URL}/kitchen?key={db.get_setting('kitchen_token')}",
@@ -742,6 +802,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 raise ShopError("Keep at least one way to pay switched on.")
             for k in ("accepting_orders", "offers_delivery", "offers_collection", "ai_enabled", "pay_cash", "pay_bank", "pay_card"):
                 db.set_setting(k, bool(f.get(k)))
+            partners = {}
+            for key, _ in menu_data.PARTNERS:
+                partners[key] = {"on": bool(f.get(f"partner_{key}")), "url": f.get(f"partner_url_{key}", "").strip()[:300],
+                                 "commission": min(max(_float(f.get(f"partner_fee_{key}"), 0) or 0, 0), 100)}
+            db.set_setting("partners", partners)
+            if f.get("ai_provider") in ("anthropic", "openai"):
+                db.set_setting("ai_provider", f.get("ai_provider"))
+            db.set_setting("ai_model", f.get("ai_model", "").strip()[:80])
+            db.set_setting("promo_item_id", int(f.get("promo_item_id") or 0))
+            if not (f.get("offers_collection") or f.get("offers_delivery")):
+                raise ShopError("Keep collection or delivery switched on.")
             db.set_setting("slot_start", shop.parse_time(f.get("slot_start", "12:00")))
             db.set_setting("slot_end", shop.parse_time(f.get("slot_end", "21:00")))
             db.set_setting("slot_minutes", max(5, int(f.get("slot_minutes") or 30)))
@@ -790,11 +861,137 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/owner/chat")
     async def assistant_chat(request: Request):
+        """The owner's assistant. Takes JSON {text}, or a form with text and photos/videos to add to her media library."""
         need_owner(request)
         await check_csrf(request)
-        body = await request.json()
         if not allow("ownerchat", 60, 600):
             return {"reply": "Slow down a little, please try again in a minute."}
-        return {"reply": agent.owner_chat(body.get("text", ""))}
+        attachments, media = [], []
+        if "multipart" in request.headers.get("content-type", ""):
+            f = await request.form()
+            text = f.get("text", "")
+            try:
+                for up in f.getlist("files")[:6]:
+                    m = await save_media(up)
+                    if m:
+                        attachments.append(m)
+                        media.append({"id": m["id"], "kind": m["kind"], "url": m["url"]})
+            except ShopError as e:
+                return {"reply": str(e)}
+        else:
+            text = (await request.json()).get("text", "")
+        if attachments and not text.strip():
+            text = "I've attached " + ("a file" if len(attachments) == 1 else "some files") + "."
+        return {"reply": agent.owner_chat(text, attachments), "media": media}
+
+    @app.get("/api/owner/history")
+    def assistant_history(request: Request):
+        need_owner(request)
+        return {"history": agent.owner_history()[-30:]}
+
+    # ------------------------------------------------------------ delivery apps
+
+    @app.post("/api/partner-orders")
+    async def partner_order(request: Request):
+        """Orders from Uber Eats, Deliveroo or Just Eat (through a connector such as Zapier, or their own integration).
+        Send the secret from Settings in the X-Partner-Key header."""
+        key = db.get_setting("partner_key") or ""
+        if not key or not secrets.compare_digest(request.headers.get("x-partner-key", ""), key):
+            return JSONResponse({"error": "Wrong partner key."}, status_code=401)
+        if not allow("partner:" + ip(request), 120, 600):
+            return JSONResponse({"error": "Too many requests."}, status_code=429)
+        try:
+            b = await request.json()
+            lines = [{"option_id": shop.find_option(i.get("dish", ""), i.get("portion", ""))["id"], "qty": int(i.get("qty") or 1)}
+                     for i in b.get("items", [])]
+            o = shop.place_partner_order(b.get("partner", ""), lines, b.get("name", ""), b.get("date") or shop.today(),
+                                         b.get("time") or "12:00", _float(b.get("total")), str(b.get("reference", ""))[:60],
+                                         str(b.get("notes", "")), str(b.get("phone", "")))
+        except (ShopError, ValueError, AttributeError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return {"ok": True, "order_id": o["id"], "total": o["total"], "commission": o["partner_fee"]}
+
+    # ------------------------------------------------------------ accounts
+
+    def _range(period: str, start: str, end: str) -> tuple[str, str]:
+        try:
+            if start and end:
+                return shop.parse_date(start).isoformat(), shop.parse_date(end).isoformat()
+        except ShopError:
+            pass
+        if period == "tax_year":
+            return accounts.tax_year()
+        if period == "all":
+            first = db.q1("SELECT MIN(d) d FROM (SELECT MIN(date) d FROM orders UNION SELECT MIN(date) FROM expenses UNION SELECT MIN(date) FROM stock_moves UNION SELECT MIN(date) FROM journals)")
+            return (first or {}).get("d") or shop.today(), shop.today()
+        return shop.period(period if period in ("week", "month", "last_month", "year") else "month")
+
+    @app.get("/owner/accounts", response_class=HTMLResponse)
+    def accounts_page(request: Request, report: str = "income", period: str = "month", start: str = "", end: str = "", account: str = ""):
+        need_owner(request)
+        s_, e_ = _range(period, start, end)
+        if report not in reports.REPORTS:
+            report = "income"
+        data = {}
+        if report == "income":
+            data = accounts.income_statement(s_, e_)
+        elif report == "balance":
+            data = accounts.balance_sheet(e_)
+        elif report == "cashflow":
+            data = accounts.cash_flow(s_, e_)
+        elif report == "trial":
+            data = accounts.trial_balance(e_)
+        elif report == "tax":
+            data = accounts.tax_summary()
+        elif report == "journal":
+            data = {"journals": accounts.journals(s_, e_)[::-1][:300]}
+        else:
+            data = {"chart": accounts.CHART}
+        ledger = None
+        if account in accounts.POSTING:
+            ledger = accounts.ledger(account, s_, e_)
+        return render(request, "owner/accounts.html", report=report, data=data, start=s_, end=e_, period=period, rep=reports.REPORTS,
+                      acc=accounts, ledger=ledger, account=account, quick=accounts.QUICK, today=shop.today(),
+                      manual=accounts.manual_journals(), postings=accounts.posting_accounts())
+
+    @app.post("/owner/accounts/journal")
+    async def accounts_journal(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        f = await request.form()
+        try:
+            if f.get("kind") == "custom":
+                lines = []
+                for i in range(4):
+                    if f.get(f"acct_{i}"):
+                        lines.append((f.get(f"acct_{i}"), _float(f.get(f"dr_{i}"), 0) or 0, _float(f.get(f"cr_{i}"), 0) or 0))
+                accounts.add_journal(f.get("date") or shop.today(), f.get("memo", ""), lines)
+                msg = "Journal saved."
+            else:
+                msg = accounts.quick_journal(f.get("kind", ""), f.get("date") or shop.today(), _float(f.get("amount"), 0), f.get("memo", ""))
+        except ShopError as e:
+            return back("/owner/accounts?report=journal", error=str(e))
+        return back("/owner/accounts?report=journal", msg)
+
+    @app.post("/owner/accounts/journal/{jid}/delete")
+    async def accounts_journal_delete(request: Request, jid: int):
+        need_owner(request)
+        await check_csrf(request)
+        try:
+            accounts.delete_journal(jid)
+        except ShopError as e:
+            return back("/owner/accounts?report=journal", error=str(e))
+        return back("/owner/accounts?report=journal", "Journal deleted.")
+
+    @app.get("/owner/accounts/export/{kind}.{fmt}")
+    def accounts_export(request: Request, kind: str, fmt: str, period: str = "month", start: str = "", end: str = ""):
+        need_owner(request)
+        if kind != "all" and kind not in reports.REPORTS or fmt not in ("xlsx", "pdf"):
+            raise HTTPException(404, "No such report.")
+        s_, e_ = _range(period, start, end)
+        data = reports.excel(kind, s_, e_) if fmt == "xlsx" else reports.pdf(kind, s_, e_)
+        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if fmt == "xlsx" else "application/pdf"
+        fname = f"pashtoon-flavours-{'accounts' if kind == 'all' else kind}-{e_}.{fmt}"
+        return Response(data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
     return app

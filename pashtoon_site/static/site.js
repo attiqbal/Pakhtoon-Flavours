@@ -163,4 +163,32 @@
     try { if (sessionStorage.getItem("pf_chat_open")) PF.openChat(); } catch (e) {}
     window.addEventListener("beforeunload", () => { try { box.classList.contains("hide") ? sessionStorage.removeItem("pf_chat_open") : sessionStorage.setItem("pf_chat_open", "1"); } catch (e) {} });
   }
+
+  // dish videos: "Watch" buttons and an optional promo that pops up once per visit
+  const vm = document.getElementById("vmodal");
+  if (vm) {
+    const player = document.getElementById("vplayer");
+    const show = (src, title, link) => {
+      player.src = src; document.getElementById("vtitle").textContent = title || "";
+      document.getElementById("vorder").href = link || "/menu"; vm.classList.remove("hide");
+      player.muted = false; player.play().catch(() => { player.muted = true; player.play().catch(() => {}); });
+    };
+    const close = () => { vm.classList.add("hide"); player.pause(); player.removeAttribute("src"); player.load(); };
+    document.getElementById("vclose").addEventListener("click", close);
+    vm.addEventListener("click", (e) => { if (e.target === vm) close(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    document.querySelectorAll("[data-video]").forEach((b) => b.addEventListener("click", () => {
+      const card = b.closest(".dish"); show(b.dataset.video, b.dataset.title, card ? "#" + card.id : "/menu");
+    }));
+    const shown = () => { try { return sessionStorage.getItem("pf_promo"); } catch (e) { return "1"; } };
+    if (window.PROMO && !shown() && !location.pathname.startsWith("/checkout") && !location.pathname.startsWith("/o/")) {
+      setTimeout(() => { try { sessionStorage.setItem("pf_promo", "1"); } catch (e) {} show(PROMO.video, PROMO.title, PROMO.link); }, 6000);
+    }
+  }
+  // "Ask about ..." buttons open the chat with a question ready
+  document.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => {
+    const open = document.getElementById("chat-open"), inp = document.getElementById("chat-input");
+    if (open) open.click();
+    if (inp) { inp.value = "Hi, can you tell me about the " + b.dataset.ask + "?"; inp.focus(); }
+  }));
 })();

@@ -11,7 +11,9 @@
       <div class="field"><label>Unit</label><select name="unit">{% for u in ['kg','g','l','ml','pcs'] %}<option>{{ u }}</option>{% endfor %}</select></div></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px"><div class="field"><label>Cost £</label><input name="cost" inputmode="decimal" required></div>
       <div class="field"><label>Date</label><input type="date" name="date" value="{{ today }}"></div></div>
-    <button class="btn primary block">Add to stock</button>
+    <div class="field"><label>Paid</label><select name="paid_from">{% for k, v in paid_from.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    <p class="hint">Spices, herbs and small items (cumin, salt, mint, foil…) aren't counted in stock: they're logged as spending instead.</p>
+    <button class="btn primary block">Add</button>
   </form>
   <form method="post" action="/owner/stock/writeoff" class="card sand"><input type="hidden" name="csrf" value="{{ csrf }}">
     <h2>Write off</h2>
@@ -44,12 +46,19 @@
     </tbody></table>{% else %}<p class="muted">Nothing yet. Add your first purchase above, or add recipes on the Menu page.</p>{% endif %}
   </div>
   <div class="stack">
+    <div class="card sand">
+      <h2>Spices, herbs and consumables</h2>
+      <p class="small muted">Not counted in stock or shopping lists. What you buy goes to spending. Move something here, or back, with its button.</p>
+      {% for i in untracked %}<form method="post" action="/owner/stock/tracked" class="summary-line"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="ingredient" value="{{ i.id }}"><input type="hidden" name="tracked" value="1"><span>{{ i.name }}</span><button class="btn small">Count in stock</button></form>{% else %}<p class="small faint">Nothing here yet.</p>{% endfor %}
+      {% if items %}<form method="post" action="/owner/stock/tracked" class="row" style="margin-top:10px"><input type="hidden" name="csrf" value="{{ csrf }}"><select name="ingredient" aria-label="Ingredient">{% for i in items %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}</select><button class="btn small">Stop counting</button></form>{% endif %}
+    </div>
     <div class="card sage">
       <h2>Shopping list</h2>
       <form method="get" class="row" style="margin-bottom:12px"><input type="date" name="start" value="{{ start }}" style="max-width:170px" aria-label="From"><span>to</span><input type="date" name="end" value="{{ end }}" style="max-width:170px" aria-label="To"><button class="btn small">Show</button></form>
       <p class="small">For {{ sl.orders }} order{{ '' if sl.orders == 1 else 's' }}, using your recipes and what's in stock.</p>
       {% for r in sl.rows %}<div class="summary-line"><span>{{ r.name }} <span class="faint small">(need {{ r.need }}, have {{ r.have }})</span></span><b>{{ r.buy }}</b></div>{% else %}<p class="muted">Nothing to buy.</p>{% endfor %}
       {% if sl.total %}<div class="summary-line total"><span>Rough cost</span><span>{{ money(sl.total) }}</span></div>{% endif %}
+      {% if sl.check %}<p class="small" style="margin-top:12px">Check your cupboard for: {{ sl.check|join(', ') }} (not counted in stock).</p>{% endif %}
       {% if sl.no_recipe %}<p class="small" style="margin-top:12px">No recipe yet for: {{ sl.no_recipe|join(', ') }}. <a href="/owner/menu">Add recipes</a></p>{% endif %}
     </div>
     <div class="card"><h2>History</h2>

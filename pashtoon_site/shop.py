@@ -15,7 +15,19 @@ UNITS = {"g": ("g", 1), "gram": ("g", 1), "grams": ("g", 1), "kg": ("g", 1000), 
          "litre": ("ml", 1000), "tbsp": ("ml", 15), "tsp": ("ml", 5), "cup": ("ml", 240), "pcs": ("pcs", 1), "pc": ("pcs", 1),
          "each": ("pcs", 1)}
 WRITE_OFF_REASONS = ["Spoiled", "Out of date", "Dropped or damaged", "Cooking mistake", "Leftover", "Other"]
-EXPENSE_CATEGORIES = ["Packaging", "Gas and electric", "Delivery", "Equipment", "Marketing", "Fees", "Other"]
+# Expense categories on the Money page, and the account each one goes to in the books (see accounts.py).
+EXPENSE_ACCOUNTS = {"Packaging": "5400", "Spices, herbs and consumables": "5300", "Gas and electric": "6100",
+                    "Delivery": "6200", "Small equipment": "6300", "Marketing": "6400", "Card and platform fees": "6500",
+                    "Partner commission": "6600", "Phone and internet": "6700", "Other": "6900"}
+EXPENSE_CATEGORIES = list(EXPENSE_ACCOUNTS)
+PAID_FROM = {"1110": "Cash", "1120": "Bank", "2110": "Not paid yet (supplier owed)"}
+# Words that mark an ingredient as a spice, herb or other small item that isn't weighed out per dish. These are not
+# tracked in stock or shopping lists; buying them is a consumables expense.
+UNTRACKED_WORDS = ["spice", "masala", "salt", "pepper", "chilli powder", "chili powder", "turmeric", "haldi", "cumin",
+                   "zeera", "jeera", "coriander seed", "coriander powder", "garam", "cardamom", "elaichi", "clove", "cinnamon",
+                   "bay lea", "star anise", "nutmeg", "mace", "fennel", "ajwain", "carom", "fenugreek", "methi", "saffron",
+                   "paprika", "herb", "mint", "coriander leaves", "dhania", "parsley", "dill", "curry lea", "food colour",
+                   "kewra", "rose water", "baking", "yeast", "oil spray", "foil", "cling", "gloves"]
 
 
 class ShopError(Exception):
@@ -72,6 +84,18 @@ def install() -> None:
                 for i, (label, price) in enumerate(opts):
                     c.execute("INSERT INTO menu_options(item_id,label,price,sort) VALUES(?,?,?,?)", (cur.lastrowid, label, price, i))
         set_setting("installed", True)
+        set_setting("added_tiffin", True)
+    if not get_setting("added_tiffin"):        # sites started before the tiffin service existed
+        set_setting("added_tiffin", True)
+        if not q1("SELECT id FROM menu_items WHERE slug='tiffin'"):
+            slug, name, cat, desc, img, notice, _ = next(m for m in menu_data.MENU if m[0] == "tiffin")
+            sort = q1("SELECT COALESCE(MAX(sort),0)+1 n FROM menu_items")["n"]
+            execute("INSERT INTO menu_items(slug,name,category,description,image,notice_hours,sort) VALUES(?,?,?,?,?,?,?)",
+                    (slug, name, cat, desc, img, notice, sort))
+    for slug in menu_data.ENQUIRY_ITEMS:
+        execute("UPDATE menu_items SET enquiry=1 WHERE slug=?", (slug,))
+    if not get_setting("partner_key"):
+        set_setting("partner_key", secrets.token_urlsafe(24))
     for key in ("calendar_token", "kitchen_token"):
         if not get_setting(key):
             set_setting(key, secrets.token_urlsafe(18))
@@ -91,7 +115,7 @@ def menu(include_hidden: bool = False) -> list[dict]:
     out = []
     for it in items:
         it["options"] = opts[it["id"]]
-        if include_hidden or (it["available"] and it["options"]):
+        if include_hidden or (it["available"] and (it["options"] or it["enquiry"])):
             out.append(it)
     return out
 
@@ -145,27 +169,30 @@ def set_available(item_id: int, available: bool) -> str:
 
 
 def save_item(item_id: int | None, name: str, category: str, description: str, notice_hours: int,
-              options: list[tuple[int | None, str, float]], available: bool = True) -> int:
+              options: list[tuple[int | None, str, float]], available: bool = True, enquiry: bool | None = None) -> int:
     name = (name or "").strip()
     if not name:
         raise ShopError("The dish needs a name.")
     if category not in dict(menu_data.CATEGORIES):
         raise ShopError("Choose a section for the dish.")
     options = [(oid, (lbl or "").strip(), p) for oid, lbl, p in options if (lbl or "").strip()]
-    if not options:
+    if enquiry is None:
+        enquiry = bool(item_id and (q1("SELECT enquiry FROM menu_items WHERE id=?", (item_id,)) or {}).get("enquiry"))
+    if not options and not enquiry:
         raise ShopError("Add at least one portion with a price.")
     for _, lbl, p in options:
         if p is None or not 0 < p < 10000:
             raise ShopError(f"'{lbl}' needs a price.")
     with tx() as c:
         if item_id:
-            c.execute("UPDATE menu_items SET name=?,category=?,description=?,notice_hours=?,available=? WHERE id=?",
-                      (name, category, description.strip(), notice_hours, 1 if available else 0, item_id))
+            c.execute("UPDATE menu_items SET name=?,category=?,description=?,notice_hours=?,available=?,enquiry=? WHERE id=?",
+                      (name, category, description.strip(), notice_hours, 1 if available else 0, 1 if enquiry else 0, item_id))
         else:
             slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") + "-" + secrets.token_hex(2)
             sort = (c.execute("SELECT COALESCE(MAX(sort),0)+1 FROM menu_items").fetchone()[0])
-            item_id = c.execute("INSERT INTO menu_items(slug,name,category,description,notice_hours,available,sort) VALUES(?,?,?,?,?,?,?)",
-                                (slug, name, category, description.strip(), notice_hours, 1 if available else 0, sort)).lastrowid
+            item_id = c.execute("INSERT INTO menu_items(slug,name,category,description,notice_hours,available,sort,enquiry) VALUES(?,?,?,?,?,?,?,?)",
+                                (slug, name, category, description.strip(), notice_hours, 1 if available else 0, sort,
+                                 1 if enquiry else 0)).lastrowid
         keep = []
         for i, (oid, lbl, p) in enumerate(options):
             if oid:
@@ -175,8 +202,36 @@ def save_item(item_id: int | None, name: str, category: str, description: str, n
                 keep.append(c.execute("INSERT INTO menu_options(item_id,label,price,sort) VALUES(?,?,?,?)",
                                       (item_id, lbl, round(p, 2), i)).lastrowid)
         marks = ",".join("?" * len(keep))
-        c.execute(f"UPDATE menu_options SET active=0 WHERE item_id=? AND id NOT IN ({marks})", (item_id, *keep))
+        c.execute(f"UPDATE menu_options SET active=0 WHERE item_id=? AND id NOT IN ({marks or 'NULL'})", (item_id, *keep))
     return item_id
+
+
+def item(item_id: int) -> dict:
+    it = q1("SELECT * FROM menu_items WHERE id=?", (item_id,))
+    if not it:
+        raise ShopError("That dish isn't on the menu.")
+    it["options"] = q("SELECT * FROM menu_options WHERE item_id=? AND active=1 ORDER BY sort, id", (item_id,))
+    return it
+
+
+def find_item(name_or_id) -> dict:
+    if isinstance(name_or_id, int) or str(name_or_id).strip().isdigit():
+        return item(int(name_or_id))
+    n = str(name_or_id or "").lower().strip()
+    for it in menu(include_hidden=True):
+        if n and (n == it["slug"] or n in it["name"].lower() or it["name"].lower() in n):
+            return item(it["id"])
+    raise ShopError(f"'{name_or_id}' isn't on the menu. Use get_menu for the exact names.")
+
+
+def set_item_media(item_id: int, image: str | None = None, video: str | None = None) -> str:
+    """Set a dish's photo or video to an uploaded file ('' removes it). None leaves it as it is."""
+    it = item(item_id)
+    if image is not None:
+        execute("UPDATE menu_items SET image=? WHERE id=?", (image or None, item_id))
+    if video is not None:
+        execute("UPDATE menu_items SET video=? WHERE id=?", (video or None, item_id))
+    return f"Updated the media for {it['name']}."
 
 
 # ---------------------------------------------------------------- availability and delivery
@@ -354,6 +409,42 @@ def place_order(lines: list[dict], name: str, phone: str, fulfilment: str, d: st
     return o
 
 
+def place_partner_order(partner: str, lines: list[dict], name: str, d: str, t: str, total: float | None = None,
+                        reference: str = "", notes: str = "", phone: str = "") -> dict:
+    """An order taken by Uber Eats, Deliveroo or Just Eat. The partner collects the money and pays her later, less
+    commission, so it's booked as paid to the partner. Notice and slot rules aren't applied: the partner's app has them."""
+    partners = setting("partners") or {}
+    if partner not in partners:
+        raise ShopError("Unknown delivery partner.")
+    qt = quote(lines, "collection" if setting("offers_collection") else "delivery", check_time=False) \
+        if setting("offers_collection") else None
+    if qt is None:
+        raise ShopError("Turn on collection so partner riders can collect.")
+    gross = round(float(total), 2) if total else qt["total"]
+    fee = round(gross * float(partners[partner].get("commission") or 0) / 100, 2)
+    stamp = iso_now()
+    label = dict(menu_data.PARTNERS).get(partner, partner)
+    with tx() as c:
+        oid = c.execute("""INSERT INTO orders(code,customer_name,phone,fulfilment,delivery_fee,food_total,total,date,time,
+                           payment_method,payment_status,paid_at,notes,source,partner,partner_fee,created_at,updated_at)
+                           VALUES(?,?,?,'collection',0,?,?,?,?,'partner','paid',?,?,?,?,?,?,?)""",
+                        (secrets.token_urlsafe(9), (name or label + " customer")[:80], phone or "-", gross, gross,
+                         parse_date(d).isoformat(), parse_time(t), parse_date(d).isoformat(),
+                         (f"{label} ref {reference}. " if reference else "") + (notes or "")[:400] or None,
+                         "partner", partner, fee, stamp, stamp)).lastrowid
+        for i in qt["items"]:
+            c.execute("INSERT INTO order_items(order_id,option_id,dish,portion,qty,unit_price) VALUES(?,?,?,?,?,?)",
+                      (oid, i["option_id"], i["dish"], i["portion"], i["qty"], i["unit_price"]))
+    alert("order", f"New {label} order #{oid}: {money(gross)} for {pretty_date(parse_date(d).isoformat())} at {parse_time(t)}",
+          f"/owner/orders/{oid}")
+    return get_order(oid)
+
+
+def partners_on() -> list[dict]:
+    p = setting("partners") or {}
+    return [{"key": k, "name": n, **p.get(k, {})} for k, n in menu_data.PARTNERS if p.get(k, {}).get("on")]
+
+
 def set_status(order_id: int, status: str) -> dict:
     if status not in STATUSES:
         raise ShopError("Unknown status.")
@@ -367,8 +458,9 @@ def set_status(order_id: int, status: str) -> dict:
 def set_payment(order_id: int, payment_status: str) -> dict:
     if payment_status not in PAYMENT_STATUSES:
         raise ShopError("Unknown payment status.")
-    get_order(order_id)
-    execute("UPDATE orders SET payment_status=?, updated_at=? WHERE id=?", (payment_status, iso_now(), order_id))
+    o = get_order(order_id)
+    paid_at = (o["paid_at"] or today()) if payment_status == "paid" else None
+    execute("UPDATE orders SET payment_status=?, paid_at=?, updated_at=? WHERE id=?", (payment_status, paid_at, iso_now(), order_id))
     return get_order(order_id)
 
 
@@ -475,12 +567,26 @@ def ingredient(name_or_id) -> dict:
     return i
 
 
-def ingredients() -> list[dict]:
-    out = q("SELECT * FROM ingredients ORDER BY name")
+def looks_untracked(name: str) -> bool:
+    n = (name or "").lower()
+    return any(w in n for w in UNTRACKED_WORDS)
+
+
+def ingredients(tracked: bool | None = True) -> list[dict]:
+    """Stock items. tracked=True: the ones counted in stock (default); False: spices, herbs and consumables; None: all."""
+    sql = "SELECT * FROM ingredients" + ("" if tracked is None else f" WHERE tracked={1 if tracked else 0}") + " ORDER BY name"
+    out = q(sql)
     for i in out:
         i["stock_txt"] = fmt_qty(i["stock"], i["unit"])
-        i["low"] = i["stock"] < 0 or (i["low_at"] > 0 and i["stock"] <= i["low_at"])
+        i["low"] = bool(i["tracked"]) and (i["stock"] < 0 or (i["low_at"] > 0 and i["stock"] <= i["low_at"]))
     return out
+
+
+def set_tracked(name_or_id, tracked: bool) -> str:
+    i = ingredient(name_or_id)
+    execute("UPDATE ingredients SET tracked=? WHERE id=?", (1 if tracked else 0, i["id"]))
+    return (f"{i['name']} is now counted in stock and shopping lists." if tracked else
+            f"{i['name']} is no longer counted; buying it goes to spices, herbs and consumables.")
 
 
 def ensure_ingredient(name: str, unit: str) -> dict:
@@ -493,21 +599,30 @@ def ensure_ingredient(name: str, unit: str) -> dict:
         if i["unit"] != base:
             raise ShopError(f"{i['name']} is counted in {i['unit']}; use a unit like that.")
         return i
-    execute("INSERT INTO ingredients(name,unit) VALUES(?,?)", (name, base))
+    execute("INSERT INTO ingredients(name,unit,tracked) VALUES(?,?,?)", (name, base, 0 if looks_untracked(name) else 1))
     return ingredient(name)
 
 
-def record_purchase(name: str, qty: float, unit: str, cost: float, d: str = "") -> str:
+def record_purchase(name: str, qty: float, unit: str, cost: float, d: str = "", paid_from: str = "1110") -> str:
+    """A food purchase. Tracked items go into stock; spices, herbs and consumables are logged as an expense."""
     _positive(qty)
     if cost is None or cost < 0:
         raise ShopError("Enter what it cost (0 if it was free).")
+    if paid_from not in PAID_FROM:
+        paid_from = "1110"
     i = ensure_ingredient(name, unit)
     base_qty, _ = to_base(qty, unit)
     per = cost / base_qty if base_qty else 0
+    if not i["tracked"]:
+        execute("UPDATE ingredients SET cost_per_unit=? WHERE id=?", (per or i["cost_per_unit"], i["id"]))
+        if cost > 0:
+            add_expense(d or today(), "Spices, herbs and consumables", f"{i['name']} ({fmt_qty(base_qty, i['unit'])})", cost,
+                        paid_from=paid_from)
+        return f"Logged {i['name']} ({money(cost)}) as spices, herbs and consumables. It isn't counted in stock."
     with tx() as c:
         c.execute("UPDATE ingredients SET stock=stock+?, cost_per_unit=? WHERE id=?", (base_qty, per or i["cost_per_unit"], i["id"]))
-        c.execute("INSERT INTO stock_moves(ingredient_id,kind,qty,cost,date,created_at) VALUES(?,?,?,?,?,?)",
-                  (i["id"], "purchase", base_qty, round(cost, 2), (d or today()), iso_now()))
+        c.execute("INSERT INTO stock_moves(ingredient_id,kind,qty,cost,reason,date,created_at) VALUES(?,?,?,?,?,?,?)",
+                  (i["id"], "purchase", base_qty, round(cost, 2), paid_from, (d or today()), iso_now()))
     return f"Added {fmt_qty(base_qty, i['unit'])} of {i['name']} ({money(cost)})."
 
 
@@ -516,6 +631,8 @@ def write_off(name, qty: float, unit: str, reason: str, d: str = "") -> str:
     if not (reason or "").strip():
         raise ShopError("Give a reason for the write-off (spoiled, out of date...).")
     i = ingredient(name)
+    if not i["tracked"]:
+        raise ShopError(f"{i['name']} isn't counted in stock, so there's nothing to write off. It was expensed when bought.")
     base_qty, base = to_base(qty, unit or i["unit"])
     if base != i["unit"]:
         raise ShopError(f"{i['name']} is counted in {i['unit']}.")
@@ -534,9 +651,9 @@ def count_stock(name, actual: float, unit: str) -> str:
         raise ShopError(f"{i['name']} is counted in {i['unit']}.")
     diff = base_qty - i["stock"]
     with tx() as c:
-        c.execute("UPDATE ingredients SET stock=? WHERE id=?", (base_qty, i["id"]))
+        c.execute("UPDATE ingredients SET stock=?, tracked=1 WHERE id=?", (base_qty, i["id"]))
         c.execute("INSERT INTO stock_moves(ingredient_id,kind,qty,cost,reason,date,created_at) VALUES(?,?,?,?,?,?,?)",
-                  (i["id"], "count", diff, 0, "Stock count", today(), iso_now()))
+                  (i["id"], "count", diff, round(diff * i["cost_per_unit"], 2), "Stock count", today(), iso_now()))
     return f"{i['name']} counted: {fmt_qty(base_qty, i['unit'])}."
 
 
@@ -545,7 +662,7 @@ def set_low_level(ingredient_id: int, low_at: float) -> None:
 
 
 def recipe(option_id: int) -> list[dict]:
-    return q("""SELECT r.*, i.name, i.unit, i.cost_per_unit FROM recipe_lines r JOIN ingredients i ON i.id=r.ingredient_id
+    return q("""SELECT r.*, i.name, i.unit, i.cost_per_unit, i.tracked FROM recipe_lines r JOIN ingredients i ON i.id=r.ingredient_id
                 WHERE r.option_id=? ORDER BY i.name""", (option_id,))
 
 
@@ -585,13 +702,14 @@ def recipe_cost(option_id: int) -> float:
     return round(sum(r["qty"] * r["cost_per_unit"] for r in recipe(option_id)), 2)
 
 
-def _needs(order_list: list[dict]) -> dict[int, float]:
+def _needs(order_list: list[dict], tracked_only: bool = True) -> dict[int, float]:
     need = defaultdict(float)
     for o in order_list:
         for it in o["items"]:
             if it["option_id"]:
                 for r in recipe(it["option_id"]):
-                    need[r["ingredient_id"]] += r["qty"] * it["qty"]
+                    if r["tracked"] or not tracked_only:
+                        need[r["ingredient_id"]] += r["qty"] * it["qty"]
     return need
 
 
@@ -599,9 +717,10 @@ def use_stock_for_order(order_id: int) -> None:
     o = get_order(order_id)
     with tx() as c:
         for iid, qty in _needs([o]).items():
+            cpu = c.execute("SELECT cost_per_unit FROM ingredients WHERE id=?", (iid,)).fetchone()[0]
             c.execute("UPDATE ingredients SET stock=stock-? WHERE id=?", (qty, iid))
             c.execute("INSERT INTO stock_moves(ingredient_id,kind,qty,cost,reason,order_id,date,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                      (iid, "use", -qty, 0, f"Order #{order_id}", order_id, o["date"], iso_now()))
+                      (iid, "use", -qty, round(qty * cpu, 2), f"Order #{order_id}", order_id, o["date"], iso_now()))
         c.execute("UPDATE orders SET stock_used=1 WHERE id=?", (order_id,))
 
 
@@ -620,7 +739,10 @@ def shopping_list(start: str, end: str) -> dict:
                          "cost": round(buy * i["cost_per_unit"], 2)})
     missing = sorted({f"{it['dish']} ({it['portion']})" for o in upcoming for it in o["items"]
                       if it["option_id"] and not recipe(it["option_id"])})
-    return {"orders": len(upcoming), "rows": rows, "no_recipe": missing, "total": round(sum(r["cost"] for r in rows), 2)}
+    used = _needs(upcoming, tracked_only=False)
+    check = sorted(i["name"] for i in ingredients(tracked=False) if used.get(i["id"]))
+    return {"orders": len(upcoming), "rows": rows, "no_recipe": missing, "total": round(sum(r["cost"] for r in rows), 2),
+            "check": check}
 
 
 def stock_history(limit: int = 60) -> list[dict]:
@@ -633,13 +755,15 @@ def stock_history(limit: int = 60) -> list[dict]:
 
 # ---------------------------------------------------------------- money
 
-def add_expense(d: str, category: str, description: str, amount: float) -> str:
+def add_expense(d: str, category: str, description: str, amount: float, paid_from: str = "1110", account: str = "") -> str:
     parse_date(d)
     _positive(amount, "amount")
     if not (description or "").strip():
         raise ShopError("Say what the expense was for.")
-    execute("INSERT INTO expenses(date,category,description,amount,created_at) VALUES(?,?,?,?,?)",
-            (d, (category or "Other")[:40], description.strip()[:200], round(amount, 2), iso_now()))
+    category = category if category in EXPENSE_ACCOUNTS else "Other"
+    execute("INSERT INTO expenses(date,category,description,amount,account,paid_from,created_at) VALUES(?,?,?,?,?,?,?)",
+            (d, category, description.strip()[:200], round(amount, 2), account or EXPENSE_ACCOUNTS[category],
+             paid_from if paid_from in PAID_FROM else "1110", iso_now()))
     return f"Logged {money(amount)} for {description.strip()} on {pretty_date(d)}."
 
 

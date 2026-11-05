@@ -9,14 +9,22 @@
     <div class="field"><label>Description</label><textarea name="description" rows="3">{{ it.description if it else '' }}</textarea></div>
     <div class="field"><label>Notice needed (hours)</label><input type="number" name="notice_hours" min="0" max="336" value="{{ it.notice_hours if it else 24 }}" style="max-width:120px"></div>
     <label class="check"><input type="checkbox" name="available" value="1" {% if not it or it.available %}checked{% endif %}> On the menu</label>
+    <label class="check"><input type="checkbox" name="enquiry" value="1" {% if it and it.enquiry %}checked{% endif %}> "Ask us" dish (no basket; customers ask the assistant, e.g. tiffin)</label>
     <div class="field" style="margin-top:16px"><label>Photo</label>
       {% if it and it.image %}<img src="{{ image_url(it.image) }}" alt="" style="border-radius:20px;margin-bottom:10px;max-width:240px;aspect-ratio:1;object-fit:cover">{% endif %}
       <input type="file" name="photo" accept="image/jpeg,image/png,image/webp">
       <div class="hint">A square, well-lit photo works best. JPEG, PNG or WebP, up to 8 MB.</div>
       {% if it and it.image %}<label class="check tiny" style="margin-top:8px"><input type="checkbox" name="remove_photo" value="1"> Remove the photo</label>{% endif %}</div>
+    <div class="field"><label>Video (plays from the Watch button, and can pop up as an ad)</label>
+      {% if it and it.video %}<video src="{{ it.video }}" controls muted playsinline preload="metadata" style="border-radius:20px;margin-bottom:10px;max-width:240px"></video>{% endif %}
+      <input type="file" name="video" accept="video/mp4,video/webm">
+      <div class="hint">MP4 or WebM, up to 60 MB. Short and vertical (6 to 10 seconds) works best.</div>
+      {% if it and it.video %}<label class="check tiny" style="margin-top:8px"><input type="checkbox" name="remove_video" value="1"> Remove the video</label>{% endif %}</div>
+    {% if library %}<div class="field"><label>Or use something already uploaded</label><select name="library_media"><option value="">Keep as it is</option>{% for m in library %}<option value="{{ m.id }}">{{ m.kind }} · {{ m.title or m.url }}</option>{% endfor %}</select></div>{% endif %}
   </div>
   <div class="card">
     <h2>Portions and prices</h2>
+    {% if it and it.enquiry %}<p class="small muted">Leave these empty if the price depends on the plan. Tell the assistant the details and it will pass them to customers.</p>{% endif %}
     {% set opts = it.options if it else [] %}
     {% for i in range(opts|length + 2) %}{% set o = opts[i] if i < opts|length else none %}
     <div class="grid" style="grid-template-columns:1fr 110px;gap:10px;margin-bottom:8px">
@@ -27,7 +35,7 @@
     {% endfor %}
     <p class="hint">Clear a portion's name to remove it.</p>
     {% if opts %}<h2 style="margin-top:22px">Recipes</h2>
-    <p class="small muted">Ingredients for <b>one</b> of each portion, one per line, like <code>250 g lamb</code>, <code>1 pcs onion</code> or <code>2 tbsp oil</code>. Units: g, kg, ml, l, tbsp, tsp, cup, pcs.</p>
+    <p class="small muted">Ingredients for <b>one</b> of each portion, one per line, like <code>250 g lamb</code>, <code>1 pcs onion</code> or <code>2 tbsp oil</code>. Units: g, kg, ml, l, tbsp, tsp, cup, pcs. Spices and herbs can go in too: they're costed but not counted in stock.</p>
     {% for o in opts %}<div class="field"><label>{{ o.label }}{% if o.cost %} <span class="faint">· costs about {{ money(o.cost) }} to make</span>{% endif %}</label>
       <textarea name="recipe_{{ o.id }}" rows="4" placeholder="500 g lamb&#10;1 pcs onion&#10;20 g ginger">{{ o.recipe }}</textarea></div>{% endfor %}{% endif %}
     <button class="btn primary block">Save</button>

@@ -13,7 +13,17 @@ DB_PATH = _env("PASHTOON_DB", os.path.join(DATA_DIR, "pashtoon_site.db"))
 BASE_URL = _env("PASHTOON_BASE_URL", "http://localhost:8000").rstrip("/")
 OWNER_PASSWORD = _env("OWNER_PASSWORD")          # used once, to set the owner's password on first start
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
-CLAUDE_MODEL = _env("CLAUDE_MODEL", "claude-sonnet-5-5")
+# The strongest model by default: it handles unusual questions, menu edits and accounts best. Owners can pick a
+# cheaper one in Settings. Override here with CLAUDE_MODEL in .env.
+CLAUDE_MODEL = _env("CLAUDE_MODEL", "claude-opus-5-5")
+MODELS = [("claude-opus-5-5", "Opus 5.5 (best, recommended)"), ("claude-sonnet-5-5", "Sonnet 5.5 (faster, cheaper)"),
+          ("claude-haiku-5-5", "Haiku 5.5 (cheapest)")]
+# Which AI company runs the assistant: "anthropic" (Claude) or "openai" (ChatGPT, or anything that speaks the same
+# protocol, such as OpenRouter, Gemini's compatible endpoint or a local server). Can also be changed in Settings.
+AI_PROVIDER = _env("AI_PROVIDER", "anthropic").lower()
+OPENAI_API_KEY = _env("OPENAI_API_KEY")
+OPENAI_BASE_URL = _env("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-5")
 TZ = ZoneInfo("Europe/London")
 
 # Optional Meta channels (see docs/meta-setup.md). One webhook, /webhook/meta, for all three. Empty = off.
