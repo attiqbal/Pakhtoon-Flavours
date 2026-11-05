@@ -27,7 +27,8 @@
 <footer class="foot"><div class="wrap">
   <div class="foot-in">
     <div><div class="big">Pre-order.<br><span class="thin">Then eat well.</span></div>
-      <p class="small" style="margin-top:18px;opacity:.85">{{ st.tagline }}. {{ st.area }}.</p></div>
+      <p class="small" style="margin-top:18px;opacity:.85">{{ st.tagline }}. {{ st.area }}.</p>
+      {% from "public/_hygiene.html" import hygiene_badge %}{{ hygiene_badge(st.hygiene_rating, st.hygiene_link, "foot-hygiene") }}</div>
     <div><b>Order</b><a href="/menu">Menu</a><a href="/checkout">Basket</a><a href="https://wa.me/{{ wa(st.whatsapp) }}">WhatsApp {{ st.whatsapp }}</a></div>
     <div><b>Follow</b><a href="https://instagram.com/{{ st.instagram }}">Instagram @{{ st.instagram }}</a><a href="https://tiktok.com/@{{ st.tiktok }}">TikTok @{{ st.tiktok }}</a><a href="/privacy">Privacy</a><a href="/owner/login">Owner login</a></div>
   </div>

@@ -1,0 +1,29 @@
+{# Food Standards Agency hygiene rating sticker, drawn as SVG so it stays sharp on any screen. #}
+{% macro hygiene_badge(rating, link, cls="") %}
+{% set labels = {"5": "Very good", "4": "Good", "3": "Generally satisfactory", "2": "Improvement necessary", "1": "Major improvement necessary", "0": "Urgent improvement necessary"} %}
+{% set r = rating|string %}
+{% if r in labels %}
+<a class="hygiene {{ cls }}" href="{{ link or 'https://ratings.food.gov.uk' }}" target="_blank" rel="noopener"
+   aria-label="Food hygiene rating {{ r }}, {{ labels[r]|lower }}. Check it on the Food Standards Agency website">
+  <svg viewBox="0 0 360 152" role="img" aria-hidden="true" focusable="false">
+    <rect width="360" height="152" rx="14" fill="#26261f"/>
+    <text x="14" y="22" fill="#fff" font-size="12" font-weight="700" font-family="Arial, Helvetica, sans-serif">Food Standards Agency</text>
+    <text x="346" y="22" fill="#d6d6c8" font-size="11" text-anchor="end" font-family="Arial, Helvetica, sans-serif">food.gov.uk/ratings</text>
+    <rect x="8" y="32" width="344" height="112" rx="9" fill="#8dc63f"/>
+    <text x="20" y="60" fill="#111" font-size="23" font-weight="700" letter-spacing=".6" font-family="Arial, Helvetica, sans-serif">FOOD HYGIENE RATING</text>
+    <rect x="16" y="68" width="328" height="2.5" fill="#111"/>
+    {% for i in range(6) %}{% set cx = 38 + i * 56 %}
+      {% if i|string == r %}
+      <circle cx="{{ cx }}" cy="98" r="24" fill="#111"/>
+      <text x="{{ cx }}" y="110" fill="#fff" font-size="34" font-weight="700" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">{{ i }}</text>
+      {% else %}
+      <circle cx="{{ cx }}" cy="98" r="16" fill="none" stroke="#111" stroke-width="2.5"/>
+      <text x="{{ cx }}" y="105" fill="#111" font-size="20" font-weight="700" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">{{ i }}</text>
+      {% endif %}
+    {% endfor %}
+    <text x="{{ 344 if r in ('4', '5') else 180 }}" y="137" fill="#111" font-size="12" font-weight="700" letter-spacing=".5"
+          text-anchor="{{ 'end' if r in ('4', '5') else 'middle' }}" font-family="Arial, Helvetica, sans-serif">{{ labels[r]|upper }}</text>
+  </svg>
+</a>
+{% endif %}
+{% endmacro %}

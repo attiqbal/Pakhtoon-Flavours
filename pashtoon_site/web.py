@@ -817,10 +817,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         f = await request.form()
         try:
             text_keys = ("shop_name", "tagline", "kitchen_postcode", "area", "whatsapp", "instagram", "tiktok", "bank_details",
-                         "review_link", "announcement", "assistant_name")
+                         "review_link", "announcement", "assistant_name", "hygiene_link")
+            if f.get("hygiene_link", "").strip() and not f.get("hygiene_link", "").strip().startswith("https://"):
+                raise ShopError("The hygiene rating link should start with https://, for example your page on ratings.food.gov.uk.")
             for k in text_keys:
                 if k in f:
                     db.set_setting(k, f.get(k, "").strip()[:600])
+            if "hygiene_rating" in f:
+                rating = f.get("hygiene_rating", "").strip()
+                db.set_setting("hygiene_rating", rating if rating in ("", "0", "1", "2", "3", "4", "5") else "")
             if not (f.get("pay_cash") or f.get("pay_bank") or f.get("pay_card")):
                 raise ShopError("Keep at least one way to pay switched on.")
             for k in ("accepting_orders", "offers_delivery", "offers_collection", "ai_enabled", "pay_cash", "pay_bank", "pay_card"):

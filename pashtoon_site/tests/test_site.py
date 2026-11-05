@@ -837,3 +837,22 @@ def test_cancel_returns_stock_month_covers_whole_month_and_no_greeting(client):
     assert e >= shop.today() and e[8:] in ("28", "29", "30", "31")
     login(client)
     assert "Assalam" not in client.get("/owner").text and "Today" in client.get("/owner").text
+
+
+def test_food_hygiene_badge(client):
+    h = client.get("/").text
+    assert "FOOD HYGIENE RATING" in h and "Food hygiene rating 5, very good" in h and "https://ratings.food.gov.uk" in h
+    assert "FOOD HYGIENE RATING" in client.get("/menu").text  # footer shows it on every public page
+    login(client)
+    page = client.get("/owner/settings").text
+    assert 'name="hygiene_rating"' in page and 'name="hygiene_link"' in page
+    form = {"pay_cash": "1", "offers_collection": "1", "accepting_orders": "1", "slot_start": "12:00", "slot_end": "21:00",
+            "slot_minutes": "30", "hygiene_rating": "4", "hygiene_link": "https://ratings.food.gov.uk/business/123456"}
+    r = client.post("/owner/settings", data=form | {"csrf": csrf(client, "/owner/settings")})
+    assert "error" not in r.headers["location"], r.headers["location"]
+    assert shop.setting("hygiene_rating") == "4" and shop.setting("hygiene_link").endswith("/123456")
+    assert "Food hygiene rating 4, good" in client.get("/").text
+    r = client.post("/owner/settings", data=form | {"hygiene_link": "javascript:alert(1)", "csrf": csrf(client, "/owner/settings")})
+    assert "error" in r.headers["location"] and shop.setting("hygiene_link").endswith("/123456")
+    client.post("/owner/settings", data=form | {"hygiene_rating": "", "csrf": csrf(client, "/owner/settings")})
+    assert "FOOD HYGIENE RATING" not in client.get("/").text
