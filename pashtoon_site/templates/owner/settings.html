@@ -77,6 +77,9 @@
         <div class="field"><label>Area</label><input name="area" value="{{ st.area }}"></div></div>
       <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"><div class="field"><label>WhatsApp</label><input name="whatsapp" value="{{ st.whatsapp }}"></div>
         <div class="field"><label>Instagram</label><input name="instagram" value="{{ st.instagram }}"></div><div class="field"><label>TikTok</label><input name="tiktok" value="{{ st.tiktok }}"></div></div>
+      <div class="grid" style="gap:10px;grid-template-columns:minmax(120px,1fr) 2fr"><div class="field"><label>Food hygiene rating</label><select name="hygiene_rating"><option value="" {% if not st.hygiene_rating %}selected{% endif %}>Don't show</option>{% for r in ['5','4','3','2','1','0'] %}<option value="{{ r }}" {% if st.hygiene_rating|string == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Link to your rating</label><input name="hygiene_link" value="{{ st.hygiene_link }}" placeholder="https://ratings.food.gov.uk/business/..."></div></div>
+      <p class="hint">Shown as the green Food Hygiene Rating sticker on your homepage. Find your own page on ratings.food.gov.uk and paste its link so customers can check it.</p>
     </div>
     <div class="card">
       <h2>AI assistant</h2>

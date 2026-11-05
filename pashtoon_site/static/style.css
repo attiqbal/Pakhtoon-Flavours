@@ -417,6 +417,12 @@ body.has-basket .chat-fab { bottom: 86px; }
 .lp-final h2 { font-size: clamp(40px, 7vw, 72px); }
 .lp-final p { opacity: .9; }
 .lp-sticky { display: none; }
+.hygiene { display: block; width: 240px; max-width: 100%; line-height: 0; border-radius: 12px; transition: transform .2s; }
+.hygiene svg { width: 100%; height: auto; display: block; }
+.hygiene:hover { transform: translateY(-2px); }
+.hygiene:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
+.lp-hygiene { margin-top: 20px; }
+.foot .hygiene.foot-hygiene { margin-top: 20px; width: 200px; }
 @media (max-width: 900px) {
   .lp-facts .wrap { grid-template-columns: 1fr 1fr; }
   .lp-faq { grid-template-columns: 1fr; gap: 20px; }

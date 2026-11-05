@@ -73,6 +73,9 @@ DEFAULT_SETTINGS = {
     "pay_bank": False,                # switch on when she takes bank transfers
     "pay_card": True,                 # only works once STRIPE_SECRET_KEY is set
     "review_link": "",
+    # Food Standards Agency hygiene rating shown on the homepage ("" hides it) and the link to her FSA listing.
+    "hygiene_rating": "5",
+    "hygiene_link": "https://ratings.food.gov.uk",
     "announcement": "",
     "ai_enabled": True,
     "assistant_name": "Zara",
