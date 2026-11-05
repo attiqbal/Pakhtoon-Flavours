@@ -77,7 +77,20 @@ DEFAULT_SETTINGS = {
     "ai_enabled": True,
     "assistant_name": "Zara",
     "ai_model": "",                   # empty = CLAUDE_MODEL from .env (Opus by default, the strongest model)
-    "promo_item_id": 0,               # dish whose video pops up once per visit (0 = off)
+    "promo_item_id": 0,
+    # Alerts to her phone when the dashboard is closed
+    "owner_phone": "",                # her personal WhatsApp number (not the business number)
+    "owner_email": "",
+    "alert_kinds": {"order": True, "question": True, "cancel": True, "payment": True, "message": True},
+    "alert_whatsapp": True,
+    "alert_ntfy": False,              # free phone push through the ntfy app
+    "ntfy_topic": "",
+    "alert_email": "fallback",        # off, fallback (only if the others fail) or always
+    "quiet_from": "",                 # e.g. 22:00; empty = never quiet
+    "quiet_to": "",
+    "quiet_urgent": True,             # cancellations still come through in quiet hours
+    "owner_wa_last_in": "",           # when she last messaged the business number (opens WhatsApp's 24 hour window)
+    "backup_email": False,            # email her a copy of the weekly backup               # dish whose video pops up once per visit (0 = off)
 }
 
 

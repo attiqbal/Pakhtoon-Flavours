@@ -5,21 +5,21 @@
 <div class="row between" style="margin-bottom:18px">
   <div class="choice">{% for k, label in [('upcoming','Upcoming'),('unpaid','Unpaid'),('past','Past'),('cancelled','Cancelled')] %}
     <a href="/owner/orders?view={{ k }}" style="text-decoration:none"><span class="badge" style="padding:8px 16px;font-size:14px;{% if view == k and not search %}background:var(--forest);color:var(--cream){% endif %}">{{ label }}</span></a>{% endfor %}</div>
-  <form method="get" class="row"><input type="search" name="search" value="{{ search }}" placeholder="Name, phone or order no." style="max-width:260px"><button class="btn small">Search</button></form>
+  <form method="get" class="row search-row"><input type="search" name="search" value="{{ search }}" placeholder="Name, phone or order no." style="max-width:260px" aria-label="Search orders"><button class="btn small">Search</button></form>
 </div>
 <div class="card scroll-x">
-  <table class="list">
+  <table class="list stack-sm">
     <thead><tr><th>No.</th><th>When</th><th>Customer</th><th>Dishes</th><th>Total</th><th>Status</th><th>Payment</th></tr></thead>
     <tbody>
     {% for o in rows %}
     <tr class="click" onclick="location.href='/owner/orders/{{ o.id }}'">
-      <td><a href="/owner/orders/{{ o.id }}">#{{ o.id }}</a></td>
-      <td class="nowrap">{{ o.date_pretty }}<div class="small faint">{{ o.time }} · {{ o.fulfilment }}</div></td>
-      <td>{{ o.customer_name }}<div class="small faint">{{ o.phone }}</div></td>
-      <td class="small">{% for i in o['items'] %}{{ i.qty }}× {{ i.dish }} <span class="faint">({{ i.portion }})</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
-      <td>{{ money(o.total) }}</td>
-      <td><span class="badge {{ o.status }}">{{ o.status }}</span></td>
-      <td><span class="badge {{ o.payment_status }}">{{ o.payment_status }}</span><div class="tiny faint">{{ pay_label(o.payment_method) }}</div></td>
+      <td class="sm-head"><a href="/owner/orders/{{ o.id }}">#{{ o.id }}</a> <span class="sm-only">{{ o.customer_name }}</span></td>
+      <td class="nowrap" data-label="When"><div>{{ o.date_pretty }}<div class="small faint">{{ o.time }} · {{ o.fulfilment }}</div></div></td>
+      <td class="sm-hide">{{ o.customer_name }}<div class="small faint">{{ o.phone }}</div></td>
+      <td class="small" data-label="Dishes"><div>{% for i in o['items'] %}{{ i.qty }}× {{ i.dish }} <span class="faint">({{ i.portion }})</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</div></td>
+      <td data-label="Total"><div><b>{{ money(o.total) }}</b></div></td>
+      <td data-label="Status"><div><span class="badge {{ o.status }}">{{ o.status }}</span></div></td>
+      <td data-label="Payment"><div><span class="badge {{ o.payment_status }}">{{ o.payment_status }}</span><div class="tiny faint">{{ pay_label(o.payment_method) }}</div></div></td>
     </tr>
     {% else %}<tr><td colspan="7" class="muted">No orders here yet.</td></tr>{% endfor %}
     </tbody>

@@ -9,7 +9,7 @@
       <label class="check"><input type="checkbox" name="accepting_orders" value="1" {% if st.accepting_orders %}checked{% endif %}> Taking orders online</label>
       <label class="check"><input type="checkbox" name="offers_collection" value="1" {% if st.offers_collection %}checked{% endif %}> Collection</label>
       <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery by us (off for now: collection only)</label>
-      <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="field"><label>First time</label><input type="time" name="slot_start" value="{{ st.slot_start }}"></div>
         <div class="field"><label>Last time</label><input type="time" name="slot_end" value="{{ st.slot_end }}"></div>
         <div class="field"><label>Every (min)</label><input type="number" name="slot_minutes" min="5" value="{{ st.slot_minutes }}"></div>
@@ -25,13 +25,33 @@
         <label class="check" style="margin:0 0 10px"><input type="checkbox" name="partner_{{ key }}" value="1" {% if p.on %}checked{% endif %}> {{ label }}</label>
         <div class="field"><label>Your page link</label><input name="partner_url_{{ key }}" value="{{ p.url or '' }}" placeholder="https://…"></div>
         <div class="field"><label>Commission %</label><input name="partner_fee_{{ key }}" value="{{ '%g'|format(p.commission or 0) }}"></div></div>{% endfor %}
-      <div class="field"><label>Secret for sending their orders in</label><input readonly value="{{ partner_key }}" onclick="this.select()" aria-label="Partner key"><div class="hint">Post orders to {{ partner_url }} with this in the X-Partner-Key header (for example from Zapier or an Uber Eats / Deliveroo integration). Each order is booked as owed by the app, less commission.</div></div>
+      <div class="field"><label>Secret for sending their orders in</label><input readonly value="{{ partner_key }}" onclick="this.select()" aria-label="Partner key"><div class="hint">Each order is booked as owed by the app, less commission. Two ways in, with no partner keys needed:<br>1. <b>Forward their order emails</b>: point an inbound-email service (Zapier Email Parser, Mailgun, Postmark) at <code>{{ partner_email_url }}</code>. It reads the items, total, reference and pickup time; anything it can't match is flagged for you to check.<br>2. <b>JSON</b>: post to {{ partner_url }} with the secret in the X-Partner-Key header. Each app must be switched on above.</div></div>
+    </div>
+    <div class="card sage">
+      <h2>Alerts to your phone</h2>
+      <p class="small muted">So you hear about new orders when the dashboard is closed. Choose how, and which alerts you want.</p>
+      <h3 style="font-size:15px;margin:12px 0 6px">How should we alert you?</h3>
+      <label class="check"><input type="checkbox" name="alert_whatsapp" value="1" {% if st.alert_whatsapp %}checked{% endif %}> WhatsApp message to your personal number</label>
+      <div class="field" style="margin:0 0 12px 30px"><label>Your WhatsApp number</label><input name="owner_phone" value="{{ st.owner_phone }}" placeholder="07700 900123" style="max-width:220px">
+        <div class="hint">{% if not wa_on %}<b>WhatsApp isn't connected yet</b> (see the Meta section below), so this can't send until it is. {% endif %}Use your own number, not the business number. Message the business number once a day (any word) and alerts arrive as normal texts for the next 24 hours{% if wa_template %}; after that a template message is used{% else %}; for alerts outside that window, add an approved WhatsApp template name as WHATSAPP_OWNER_TEMPLATE in .env{% endif %}.{% if wa_window %} Your 24 hour window is open now.{% endif %}</div></div>
+      <label class="check"><input type="checkbox" name="alert_ntfy" value="1" {% if st.alert_ntfy %}checked{% endif %}> Free phone push with the ntfy app</label>
+      <p class="small" style="margin:0 0 12px 30px">{% if st.ntfy_topic %}Install the free <b>ntfy</b> app and subscribe to topic <b>{{ st.ntfy_topic }}</b> on {{ ntfy_server }}. It works with no account.{% else %}Tick and save to get your private topic, then install the free ntfy app and subscribe to it.{% endif %}</p>
+      <div class="field"><label>Email</label><input type="email" name="owner_email" value="{{ st.owner_email }}" placeholder="you@example.com">
+        <div class="hint">{% if not smtp_on %}<b>Email isn't set up yet</b>: add SMTP_HOST, SMTP_USER, SMTP_PASSWORD and SMTP_FROM to .env. {% endif %}</div></div>
+      <div class="field"><label>Send email</label><select name="alert_email"><option value="off" {% if st.alert_email == 'off' %}selected{% endif %}>Never</option><option value="fallback" {% if st.alert_email == 'fallback' %}selected{% endif %}>Only if the other alerts fail</option><option value="always" {% if st.alert_email == 'always' %}selected{% endif %}>Always</option></select></div>
+      <h3 style="font-size:15px;margin:12px 0 6px">What should we alert you about?</h3>
+      {% for k, label in alert_kinds.items() %}<label class="check"><input type="checkbox" name="alert_{{ k }}" value="1" {% if st.alert_kinds[k] %}checked{% endif %}> {{ label }}</label>{% endfor %}
+      <label class="check" style="margin-top:6px"><input type="checkbox" name="backup_email" value="1" {% if st.backup_email %}checked{% endif %}> Email me a copy of the weekly backup (Sundays)</label>
+      <h3 style="font-size:15px;margin:12px 0 6px">Quiet hours</h3>
+      <div class="grid two" style="gap:10px"><div class="field"><label>From</label><input type="time" name="quiet_from" value="{{ st.quiet_from }}"></div><div class="field"><label>Until</label><input type="time" name="quiet_to" value="{{ st.quiet_to }}"></div></div>
+      <label class="check"><input type="checkbox" name="quiet_urgent" value="1" {% if st.quiet_urgent %}checked{% endif %}> Still tell me about cancellations</label>
+      <div class="hint">Leave empty for no quiet hours. Held alerts come as one summary when quiet hours end.</div>
     </div>
     <div class="card">
       <h2>Delivery charges</h2>
       <p class="small muted">Distance is measured in a straight line from your collection postcode.</p>
       {% for i in range(3) %}{% set b = st.delivery_bands[i] if i < st.delivery_bands|length else none %}
-      <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="field"><label>Up to miles</label><input name="band_miles_{{ i }}" value="{{ ('%g'|format(b[0])) if b and b[0] is not none else '' }}" placeholder="{{ 'any distance' if b else '' }}"></div>
         <div class="field"><label>Charge £</label><input name="band_fee_{{ i }}" value="{{ ('%.2f'|format(b[1])) if b else '' }}"></div>
         <div class="field"><label>Minimum order £</label><input name="band_min_{{ i }}" value="{{ ('%g'|format(b[2])) if b and b[2] else '' }}"></div>
@@ -55,7 +75,7 @@
       <div class="field"><label>Tagline</label><input name="tagline" value="{{ st.tagline }}"></div>
       <div class="grid two" style="gap:10px"><div class="field"><label>Collection postcode</label><input name="kitchen_postcode" value="{{ st.kitchen_postcode }}"></div>
         <div class="field"><label>Area</label><input name="area" value="{{ st.area }}"></div></div>
-      <div class="grid" style="gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))"><div class="field"><label>WhatsApp</label><input name="whatsapp" value="{{ st.whatsapp }}"></div>
+      <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"><div class="field"><label>WhatsApp</label><input name="whatsapp" value="{{ st.whatsapp }}"></div>
         <div class="field"><label>Instagram</label><input name="instagram" value="{{ st.instagram }}"></div><div class="field"><label>TikTok</label><input name="tiktok" value="{{ st.tiktok }}"></div></div>
     </div>
     <div class="card">
@@ -75,6 +95,16 @@
   </div>
 </form>
 
+<div class="grid two" style="align-items:start;margin-top:24px">
+  <div class="card"><h2>Test your alerts</h2>
+    <form method="post" action="/owner/settings/test-alert"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Send a test alert</button> <span class="small muted">Save your settings first.</span></form>
+    {% for l in alert_log %}<div class="summary-line small"><span>{{ l.created_at[5:16]|replace('T',' ') }} · {{ l.channel }} · {{ l.text }}</span><span>{{ 'ok' if l.ok else 'failed: ' ~ l.detail }}</span></div>{% else %}<p class="small faint" style="margin-top:10px">Nothing sent yet.</p>{% endfor %}</div>
+  <div class="card"><h2>Backups</h2>
+    <p class="small muted">A backup of all your orders, menu, accounts and photos is made automatically every day and the newest {{ 30 }} are kept{% if last_backup %}. Last one: {{ last_backup[:16]|replace('T',' ') }}{% endif %}.</p>
+    <div class="row" style="margin-bottom:10px"><form method="post" action="/owner/settings/backup"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Back up now</button></form><a class="btn small primary" href="/owner/backup/now">Download a backup</a></div>
+    {% for b in backups[:5] %}<div class="summary-line small"><span>{{ b.name }}</span><a href="/owner/backup/{{ b.name }}">{{ (b.size / 1024)|round|int }} KB</a></div>{% endfor %}
+    <p class="small muted" style="margin-top:10px">Keep a copy off the server too: download one weekly, or tick the weekly email in the form above and add your email.</p></div>
+</div>
 <div class="card" style="margin-top:24px">
   <h2>WhatsApp, Instagram and Facebook Messenger</h2>
   <p class="small muted">The same assistant answers customers on Meta's apps, and their chats appear in Messages. Each one switches on when its keys are in the .env file (see the README's Meta section).</p>

@@ -1,0 +1,27 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Tiffin{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Weekly meal plans</span><h1>Tiffin</h1></div><a class="btn small" href="/tiffin" target="_blank">View sign-up page ↗</a></div>
+<div class="grid two" style="align-items:start">
+  <div class="stack">
+    {% for p in plans %}<form method="post" action="/owner/tiffin/plan" class="card"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="plan_id" value="{{ p.id }}">
+      <div class="field"><label>Plan name</label><input name="name" value="{{ p.name }}" required></div>
+      <div class="field"><label>What's included</label><textarea name="description" rows="2">{{ p.description }}</textarea></div>
+      <div class="grid two" style="gap:10px"><div class="field"><label>Meals a week (most)</label><input type="number" name="max_days" min="1" max="7" value="{{ p.max_days }}"></div><div class="field"><label>Price a week £</label><input name="price_week" value="{{ '%.2f'|format(p.price_week) }}"></div></div>
+      <label class="check"><input type="checkbox" name="active" value="1" {% if p.active %}checked{% endif %}> On offer</label>
+      <button class="btn small">Save plan</button></form>{% endfor %}
+    <form method="post" action="/owner/tiffin/plan" class="card sand"><input type="hidden" name="csrf" value="{{ csrf }}"><h2>Add a plan</h2>
+      <p class="small muted">You can also just tell the assistant: "add a veg tiffin plan, 5 lunches a week, £45".</p>
+      <div class="field"><label>Plan name</label><input name="name" required placeholder="Weekday lunch box"></div>
+      <div class="field"><label>What's included</label><textarea name="description" rows="2"></textarea></div>
+      <div class="grid two" style="gap:10px"><div class="field"><label>Meals a week (most)</label><input type="number" name="max_days" min="1" max="7" value="5"></div><div class="field"><label>Price a week £</label><input name="price_week" required></div></div>
+      <input type="hidden" name="active" value="1"><button class="btn primary">Add plan</button></form>
+  </div>
+  <div class="card"><h2>Subscribers</h2>
+    {% for s in subs %}<div class="summary-line" style="align-items:flex-start"><span><b>{{ s.customer_name }}</b> · {{ s.phone }}<br><span class="small muted">{{ s.plan_name }} · {{ s.day_names }} at {{ s.time }} · {{ money(s.week_total) }}/week · {{ s.upcoming }} meals ahead · {{ s.status }}</span></span>
+      <span class="row" style="flex-wrap:nowrap">{% if s.status == 'active' %}<form method="post" action="/owner/tiffin/{{ s.id }}/pause"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Pause</button></form>{% elif s.status == 'paused' %}<form method="post" action="/owner/tiffin/{{ s.id }}/resume"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Resume</button></form>{% endif %}
+      {% if s.status != 'cancelled' %}<form method="post" action="/owner/tiffin/{{ s.id }}/cancel" onsubmit="return confirm('Cancel this plan and its upcoming meals?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small danger">Cancel</button></form>{% endif %}</span></div>
+    {% else %}<p class="muted">No subscribers yet.</p>{% endfor %}
+    <p class="small muted" style="margin-top:12px">Each meal appears as an order on the Orders page and the kitchen screen. Mark them paid there when the weekly payment comes in.</p></div>
+</div>
+{% endblock %}

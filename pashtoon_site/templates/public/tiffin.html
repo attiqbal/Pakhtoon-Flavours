@@ -1,0 +1,42 @@
+{% extends "public/_base.html" %}
+{% block title %}Tiffin · {{ st.shop_name }}{% endblock %}
+{% block page %}
+<div class="wrap" style="padding-top:40px;padding-bottom:80px;max-width:900px">
+  <span class="eyebrow">Tiffin service</span><h1>Home-cooked meals,<br><span class="thin">every week.</span></h1>
+  <p class="muted">Pick a plan and the days you want. We cook fresh each day, you collect at the time you choose. Paid weekly, cancel any time (24 hours' notice for each meal).</p>
+  {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+  {% if not plans %}<div class="card sage"><h2>Plans coming soon</h2><p>We're getting the tiffin plans ready. Ask our assistant or message us on WhatsApp {{ st.whatsapp }}.</p></div>
+  {% else %}
+  <form method="post" action="/tiffin" class="grid two" style="align-items:start;margin-top:24px"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="stack">
+      <div class="card"><h2>Your plan</h2>
+        {% for p in plans %}<label class="check" style="align-items:flex-start"><input type="radio" name="plan_id" value="{{ p.id }}" {% if f.plan_id == p.id|string or (not f.plan_id and loop.first) %}checked{% endif %}>
+          <span><b>{{ p.name }}</b> · {{ money(p.price_week) }} a week<br><span class="small muted">{{ p.description }} Up to {{ p.max_days }} meals a week ({{ money(p.meal_price) }} each).</span></span></label>{% endfor %}
+      </div>
+      <div class="card"><h2>Days and time</h2>
+        <div class="choice" style="margin-bottom:12px">{% for d in days %}<label><input type="checkbox" name="days" value="{{ loop.index0 }}" ><span>{{ d }}</span></label>{% endfor %}</div>
+        <div class="grid two" style="gap:12px">
+          <div class="field"><label for="start">Start date</label><input type="date" id="start" name="start" min="{{ earliest }}" value="{{ f.start or earliest }}" required></div>
+          <div class="field"><label for="time">Collect at</label><select id="time" name="time" required>{% for s in slots %}<option {% if f.time == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="field"><label for="weeks">For how long</label><select id="weeks" name="weeks"><option value="0">Until I cancel</option><option value="1">1 week</option><option value="2">2 weeks</option><option value="4">4 weeks (a month)</option><option value="8">8 weeks</option></select></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card"><h2>Your details</h2>
+        <div class="field"><label for="name">Name</label><input id="name" name="name" value="{{ f.name or '' }}" autocomplete="name" required></div>
+        <div class="field"><label for="phone">Mobile number</label><input type="tel" id="phone" name="phone" value="{{ f.phone or '' }}" autocomplete="tel" required></div>
+        <div class="field"><label for="email">Email <span class="faint">(optional)</span></label><input type="email" id="email" name="email" value="{{ f.email or '' }}"></div>
+        {% if st.offers_delivery %}<div class="choice" style="margin-bottom:12px"><label><input type="radio" name="fulfilment" value="collection" checked><span>Collection</span></label><label><input type="radio" name="fulfilment" value="delivery"><span>Delivery</span></label></div>
+        <div class="field"><label for="address">Address (delivery)</label><textarea id="address" name="address" rows="2"></textarea></div>
+        <div class="field"><label for="postcode">Postcode (delivery)</label><input id="postcode" name="postcode" style="max-width:200px"></div>
+        {% else %}<input type="hidden" name="fulfilment" value="collection"><p class="small muted">Collect from {{ st.kitchen_postcode }}.</p>{% endif %}
+        <div class="field"><label for="notes">Allergies or preferences <span class="faint">(optional)</span></label><textarea id="notes" name="notes" rows="2" maxlength="400">{{ f.notes or '' }}</textarea></div>
+        <div class="field"><label>Pay weekly by</label><div class="choice"><label><input type="radio" name="payment" value="cash" checked><span>Cash</span></label>{% if st.pay_bank %}<label><input type="radio" name="payment" value="bank"><span>Bank transfer</span></label>{% endif %}</div></div>
+        <button class="btn primary big block" type="submit" {% if not st.accepting_orders %}disabled{% endif %}>Start my tiffin</button>
+      </div>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,48 +1,106 @@
 {% extends "public/_base.html" %}
+{% block title %}{{ st.shop_name }} · Khyber Pukhtunkhwa food, home-cooked to order{% endblock %}
+{% block bodyclass %}home{% endblock %}
+{% block head %}
+{% set hero = featured[0] if featured else none %}
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{ st.shop_name }}">
+<meta property="og:description" content="{{ st.tagline }}. Pre-order online for collection from {{ st.kitchen_postcode }}.">
+<meta property="og:url" content="{{ base_url }}/">
+<meta property="og:image" content="{{ base_url }}{{ image_url(hero.image) if hero else '/static/img/dampukh.jpg' }}">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org", "@type": "FoodEstablishment", "name": st.shop_name, "description": st.tagline,
+  "url": base_url ~ "/", "menu": base_url ~ "/menu", "telephone": st.whatsapp, "servesCuisine": "Pakistani, Pashtun",
+  "address": {"@type": "PostalAddress", "postalCode": st.kitchen_postcode, "addressLocality": st.area, "addressCountry": "GB"},
+  "image": base_url ~ (image_url(hero.image) if hero else "/static/img/dampukh.jpg"),
+  "sameAs": ["https://instagram.com/" ~ st.instagram, "https://tiktok.com/@" ~ st.tiktok],
+  "acceptsReservations": false, "priceRange": "££"}|tojson }}</script>
+{% endblock %}
 {% block page %}
 {% set hero = featured[0] if featured else none %}
-<section class="hero" style="background-image:url('{{ image_url(hero.image) if hero else '/static/img/dampukh.jpg' }}')">
-  <div class="hero-panel">
-    <span class="eyebrow">Traditional Khyber Pukhtunkhwa cuisine</span>
+{% set hero_clip = clips[0] if clips else none %}
+
+<section class="lp-hero">
+  <div class="lp-hero-media">
+    {% if hero_clip %}<video autoplay muted loop playsinline preload="metadata" poster="{{ image_url(hero_clip.image) if hero_clip.image else '' }}" aria-hidden="true"><source src="{{ hero_clip.video }}" type="video/mp4"></video>
+    {% else %}<img src="{{ image_url(hero.image) if hero else '/static/img/dampukh.jpg' }}" alt="">{% endif %}
+  </div>
+  <div class="lp-hero-panel">
+    <span class="eyebrow">{{ st.area }} · home kitchen</span>
     <h1>Slow-cooked,<br><span class="thin">the Peshawar way.</span></h1>
-    <p>Dam Pukh, Namkeen Gosht, Bannu Pulao and Raan Pulao, cooked at home to order. Pre-order online for collection{% if st.offers_delivery %} or delivery{% endif %}.</p>
-    <div class="row"><a class="btn primary big" href="/menu">Order now</a><a class="ghost" href="#how">How pre-ordering works</a></div>
-    {% if not st.accepting_orders %}<p class="alert info" style="margin:18px 0 0">We're not taking new orders right now. Message us and we'll let you know when we reopen.</p>{% endif %}
+    <p class="lp-lead">Dam Pukh, Namkeen Gosht, Bannu Pulao and Raan Pulao, cooked at home to order. Pre-order online for collection{% if st.offers_delivery %} or delivery{% endif %}.</p>
+    <div class="row lp-ctas"><a class="btn primary big" href="/menu">See the menu and order</a>
+      <button type="button" class="btn big lp-chat" data-chat>Ask us anything</button></div>
+    {% if earliest %}<p class="lp-next"><span class="live-dot" aria-hidden="true"></span> Taking orders now · earliest {{ earliest }}</p>
+    {% else %}<p class="alert info" style="margin:18px 0 0">We're not taking new orders right now. Message us and we'll let you know when we reopen.</p>{% endif %}
   </div>
 </section>
 
+<section class="lp-facts" aria-label="At a glance"><div class="wrap">
+  <div><b>Pre-order</b><span>24 hours ahead, 48 for Raan Pulao</span></div>
+  <div><b>Collection{% if st.offers_delivery %} or delivery{% endif %}</b><span>From {{ st.kitchen_postcode }}{% if partners %}, or on {{ partners|map(attribute='name')|join(' and ') }}{% endif %}</span></div>
+  <div><b>Pay your way</b><span>{{ pay_methods|map(attribute=1)|join(', ') }}</span></div>
+  <div><b>Ask us</b><span>Chat here or WhatsApp {{ st.whatsapp }}</span></div>
+</div></section>
+
 <section class="band"><div class="wrap">
-  <div class="row between" style="align-items:flex-end;margin-bottom:30px"><div><span class="eyebrow">From the menu</span><h2>Made to order,<br><span class="thin">made with patience</span></h2></div>
-    <a class="ghost" href="/menu">See the full menu</a></div>
-  <div class="cards">
-    {% for it in featured[:6] %}
-    <a class="dish" href="/menu#{{ it.slug }}" style="text-decoration:none">
-      {% if it.category == 'special' %}<span class="badge-lime">48 hours' notice</span>{% endif %}
+  <div class="row between lp-head"><div><span class="eyebrow">Signature dishes</span><h2>Made to order,<br><span class="thin">made with patience</span></h2></div>
+    <a class="ghost" href="/menu">Full menu{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
+  <div class="lp-rail">
+    {% for it in featured[:8] %}
+    <a class="dish lp-card" href="/menu#{{ it.slug }}" style="text-decoration:none">
+      {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
       <img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">
       <div class="body"><h3>{{ it.name }}</h3><p>{{ it.description }}</p>
-        <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b></p><span class="ghost">Order now</span></div>
+        <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b></p></div>
     </a>
     {% endfor %}
   </div>
 </div></section>
+
+{% if clips %}
+<section class="band forest"><div class="wrap">
+  <div class="row between lp-head"><div><span class="eyebrow">From our kitchen</span><h2>Watch it cooked</h2></div>
+    <a class="ghost" style="color:var(--cream)" href="https://instagram.com/{{ st.instagram }}" target="_blank" rel="noopener">More on Instagram</a></div>
+  <div class="lp-rail lp-reels">
+    {% for it in clips[:6] %}
+    <button type="button" class="lp-reel" data-video="{{ it.video }}" data-title="{{ it.name }}" aria-label="Watch {{ it.name }}">
+      {% if it.image %}<img src="{{ image_url(it.image) }}" alt="" loading="lazy">{% endif %}
+      <span class="lp-play" aria-hidden="true">▶</span><span class="lp-reel-name">{{ it.name }}</span>
+    </button>
+    {% endfor %}
+  </div>
+</div></section>
+{% endif %}
 
 <section class="band sage" id="how"><div class="wrap">
   <span class="eyebrow">How it works</span><h2>Order a day ahead.<br><span class="thin">We cook it fresh.</span></h2>
   <div class="steps">
     <div><div class="n">1</div><h3>Choose your dishes</h3><p class="muted">Per person or family portions. Add nan, chutney, salad and kheer.</p></div>
     <div><div class="n">2</div><h3>Pick a day and time</h3><p class="muted">At least 24 hours ahead, 48 hours for Raan Pulao. Collection{% if st.offers_delivery %} or delivery{% endif %}.</p></div>
-    <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">Cash on collection or delivery{% if st.pay_card %}, or card, Apple Pay and Google Pay online{% endif %}. You'll get your order number straight away.</p></div>
-    <div><div class="n">4</div><h3>Questions?</h3><p class="muted">Chat with us here any time, or on WhatsApp {{ st.whatsapp }}.</p></div>
+    <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">{{ pay_methods|map(attribute=1)|join(', ') }}. You get your order number and a tracking link straight away.</p></div>
+    <div><div class="n">4</div><h3>Collect and enjoy</h3><p class="muted">We confirm on WhatsApp and let you know when it's ready.</p></div>
   </div>
+  <a class="btn primary big" href="/menu" style="margin-top:36px">Start your order</a>
 </div></section>
+
+{% if tiffin %}
+<section class="band"><div class="wrap split">
+  <div><span class="eyebrow">Tiffin service</span><h2>Home cooking,<br><span class="thin">on your schedule.</span></h2>
+    <p class="muted">{{ tiffin.description }}</p>
+    <button type="button" class="btn primary" data-ask="{{ tiffin.name }}">Ask about tiffin plans</button></div>
+  <img src="{{ image_url(featured[1].image) if featured|length > 1 else '/static/img/pulao.jpg' }}" alt="" loading="lazy">
+</div></section>
+{% endif %}
 
 <section class="band sand" id="delivery"><div class="wrap split">
   <div>
     <span class="eyebrow">Collection{% if st.offers_delivery %} and delivery{% endif %}</span><h2>Collect from {{ st.kitchen_postcode }}{% if st.offers_delivery %}<br><span class="thin">or we'll bring it to you.</span>{% endif %}</h2>
+    <p class="muted">We send the exact address with your confirmation.</p>
     {% if partners %}<p><b>Delivery apps</b>: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
     {% if st.offers_delivery %}<p><b>Delivery charges</b></p>{% for b in bands %}<div class="summary-line">{{ b }}</div>{% endfor %}{% endif %}
-    <p class="small muted" style="margin-top:14px">Cancellations need at least 24 hours' notice. For late cancellations or no-shows we may not be able to offer a full refund, as ingredients and cooking will already have started.</p>
-    <a class="btn primary" href="/menu">Start your order</a>
+    <a class="btn primary" href="/menu" style="margin-top:12px">Start your order</a>
   </div>
   <img src="/static/img/raan.jpg" alt="Peshawari Raan Pulao" loading="lazy">
 </div></section>
@@ -53,4 +111,31 @@
     <p class="muted">The Pashtoon Flavours is a small family kitchen cooking the dishes we grew up with: Namkeen Gosht inspired by Peshawar's Namak Mandi, kheer from the lanes of Qissa Khwani Bazaar, and pulao from Bannu. Every order is cooked fresh for you.</p>
     <a class="ghost" href="https://instagram.com/{{ st.instagram }}">Follow @{{ st.instagram }}</a></div>
 </div></section>
+
+<section class="band sage" id="faq"><div class="wrap lp-faq">
+  <div><span class="eyebrow">Questions</span><h2>Good to know</h2>
+    <p class="muted">Anything else? <button type="button" class="link" data-chat>Chat with us</button> or WhatsApp <a href="https://wa.me/{{ wa(st.whatsapp) }}">{{ st.whatsapp }}</a>.</p></div>
+  <div>
+    <details open><summary>How far ahead do I need to order?</summary><p>At least 24 hours before you want it, and 48 hours for Raan Pulao. We cook between {{ st.slot_start }} and {{ st.slot_end }}.</p></details>
+    <details><summary>Can I change or cancel my order?</summary><p>Yes, with at least 24 hours' notice. You can cancel from your order link, or message us to change it. Late cancellations may not get a full refund, as ingredients and cooking will already have started.</p></details>
+    <details><summary>How do I pay?</summary><p>{{ pay_methods|map(attribute=1)|join(', ') }}. You choose when you order.</p></details>
+    <details><summary>Do you deliver?</summary><p>{% if st.offers_delivery %}Yes. {% for b in bands %}{{ b }}{% if not loop.last %}; {% endif %}{% endfor %}.{% else %}We're collection only for now, from {{ st.kitchen_postcode }}.{% endif %}{% if partners %} You can also order from us on {{ partners|map(attribute='name')|join(' and ') }}.{% endif %}</p></details>
+    <details><summary>I have an allergy. Can you help?</summary><p>Please ask before you order: tell us in the chat or on WhatsApp and the cook will reply herself. You can also add a note at checkout.</p></details>
+    <details><summary>Can you cook for a party or event?</summary><p>Family portions feed several people, and for bigger orders just message us so we can plan it with you.</p></details>
+  </div>
+</div></section>
+
+<section class="band forest lp-final"><div class="wrap">
+  <h2>Hungry yet?<br><span class="thin">Order a day ahead.</span></h2>
+  {% if earliest %}<p>Earliest available: <b>{{ earliest }}</b></p>{% endif %}
+  <a class="btn primary big" href="/menu">See the menu and order</a>
+</div></section>
+
+<div class="lp-sticky" id="lp-sticky"><a class="btn primary big block" href="/menu">Order now{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
 {% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll("[data-chat]").forEach((b) => b.addEventListener("click", () => { const o = document.getElementById("chat-open"); if (o) o.click(); }));
+(function () { const s = document.getElementById("lp-sticky"), h = document.querySelector(".lp-ctas");
+  if (!s || !h || !("IntersectionObserver" in window)) return;
+  new IntersectionObserver(([e]) => s.classList.toggle("show", !e.isIntersecting)).observe(h); })();
+</script>{% endblock %}

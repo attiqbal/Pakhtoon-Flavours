@@ -13,16 +13,18 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import accounts, agent, config, db, llm, menu_data, messages, meta, payments, reports, shop
+from . import accounts, agent, backup, config, db, llm, menu_data, messages, meta, notify, payments, reports, shop, tasks, tiffin
+from . import partners as partners_mod
 from .shop import ShopError
 
 log = logging.getLogger(__name__)
 HERE = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
 templates.env.globals.update(money=shop.money, menu_categories=menu_data.CATEGORIES, statuses=shop.STATUSES, wa=shop.wa_number,
-                              pay_label=payments.label, image_url=lambda img: img if (img or '').startswith('/') else f'/static/img/{img}')
+                              pay_label=payments.label, pretty=shop.pretty_date, image_url=lambda img: img if (img or '').startswith('/') else f'/static/img/{img}')
 
 
 # ---------------------------------------------------------------- small helpers
@@ -173,12 +175,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
     if config.OWNER_PASSWORD and not db.get_setting("owner_password_hash"):
         db.set_setting("owner_password_hash", bcrypt.hashpw(config.OWNER_PASSWORD.encode(), bcrypt.gensalt()).decode())
 
+    tasks.start()
     app = FastAPI(title="The Pashtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), session_cookie="pf_session", same_site="lax",
                        https_only=config.BASE_URL.startswith("https"), max_age=60 * 60 * 24 * 30)
     app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
     app.mount("/media", StaticFiles(directory=config.UPLOAD_DIR), name="media")
+
+    @app.get("/healthz")
+    def healthz():
+        """For the host's health check: is the database answering, and how old is the last backup."""
+        try:
+            db.q1("SELECT 1 AS ok")
+        except Exception:  # noqa: BLE001
+            return JSONResponse({"ok": False}, status_code=503)
+        return {"ok": True, "last_backup_hours": backup.last_backup_age_hours()}
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException):
@@ -195,12 +207,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
         items = shop.menu()
-        featured = [i for i in items if i["image"] and i["category"] in ("mains", "special")]
-        return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines())
+        featured = [i for i in items if i["image"] and i["category"] in ("mains", "special") and i["options"]]
+        return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines(),
+                      clips=[i for i in items if i["video"]], tiffin=next((i for i in items if i["category"] == "tiffin"), None),
+                      earliest=shop.earliest_day(), pay_methods=payments.methods(),
+                      from_price=min((o["price"] for i in featured for o in i["options"]), default=0))
 
     @app.get("/menu", response_class=HTMLResponse)
     def menu_page(request: Request):
-        return render(request, "public/menu.html", sections=shop.menu_by_category())
+        return render(request, "public/menu.html", sections=shop.menu_by_category(), tiffin_plans=tiffin.plans())
 
     @app.get("/checkout", response_class=HTMLResponse)
     def checkout_page(request: Request):
@@ -220,9 +235,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def api_quote(request: Request):
         body = await request.json()
         try:
-            qt = shop.quote(_cart(json.dumps(body.get("items", []))), body.get("fulfilment") or "collection",
-                            body.get("postcode", ""), body.get("date", ""), body.get("time", ""),
-                            check_time=bool(body.get("date") and body.get("time")))
+            qt = await run_in_threadpool(shop.quote, _cart(json.dumps(body.get("items", []))), body.get("fulfilment") or "collection",
+                                         body.get("postcode", ""), body.get("date", ""), body.get("time", ""),
+                                         check_time=bool(body.get("date") and body.get("time")))
             return {"ok": True, **qt}
         except ShopError as e:
             return {"ok": False, "error": str(e)}
@@ -244,14 +259,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         try:
             if not agree:
                 raise ShopError("Please tick to confirm you've read the cancellation policy.")
-            o = shop.place_order(_cart(cart), name, phone, fulfilment, date_, time_, payment, address, postcode, email, notes)
+            o = await run_in_threadpool(shop.place_order, _cart(cart), name, phone, fulfilment, date_, time_, payment, address,
+                                        postcode, email, notes)
         except ShopError as e:
             return render(request, "public/checkout.html", error=str(e), **page)
         request.session.setdefault("my_orders", [])
         request.session["my_orders"] = (request.session["my_orders"] + [o["code"]])[-10:]
         if o["payment_method"] == "card":
             try:
-                return RedirectResponse(payments.create_checkout(o), status_code=303)
+                return RedirectResponse(await run_in_threadpool(payments.create_checkout, o), status_code=303)
             except RuntimeError:
                 log.exception("card checkout failed for order %s", o["id"])
                 return back(f"/o/{o['code']}?new=1", error="Your order is placed, but the card payment page didn't open. Press Pay now to try again.")
@@ -293,7 +309,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if not allow(f"pay:{ip(request)}", 20, 3600):
             return back(f"/o/{code}", error="Please wait a little and try again.")
         try:
-            return RedirectResponse(payments.create_checkout(o), status_code=303)
+            return RedirectResponse(await run_in_threadpool(payments.create_checkout, o), status_code=303)
         except RuntimeError:
             return back(f"/o/{code}", error="The card payment page didn't open. Please try again in a minute, or pay cash.")
 
@@ -344,7 +360,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             request.session["chat"] = conv["token"]
         if not allow(f"chat:{conv['id']}", 25, 600) or not allow(f"chatip:{ip(request)}", 60, 600):
             return {"ok": False, "error": "You're sending messages very quickly. Please wait a moment."}
-        agent.customer_message(conv, text)
+        await run_in_threadpool(agent.customer_message, conv, text)     # the AI can take a while; don't hold up other visitors
         return {"ok": True, "lines": agent.chat_lines(conv["id"], int(body.get("after") or 0))}
 
     @app.get("/api/chat/poll")
@@ -364,6 +380,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     def _handle_meta(items: list[dict]) -> None:
         for m in items:
+            if m["channel"] == "whatsapp" and notify.owner_digits() and shop.wa_number(m["from"]) == notify.owner_digits():
+                notify.note_owner_message()      # her own message to the business number: opens the 24 hour window, not a customer
+                continue
             conv = db.q1("SELECT * FROM conversations WHERE channel=? AND contact=? ORDER BY id DESC LIMIT 1", (m["channel"], m["from"]))
             conv = conv or agent.new_conversation(m["channel"], m["from"], m["name"])
             if not allow(f"meta:{m['channel']}:{m['from']}", 40, 3600):
@@ -781,6 +800,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return render(request, "owner/settings.html", ai_on=agent.configured(), meta_status=meta.status(), meta_channels=meta.CHANNELS,
                       models=config.MODELS, provider=llm.provider(), model=llm.model(), partners=menu_data.PARTNERS,
                       partner_key=db.get_setting("partner_key"), partner_url=f"{config.BASE_URL}/api/partner-orders",
+                      partner_email_url=f"{config.BASE_URL}/api/partner-orders/email?key={db.get_setting('partner_key')}",
+                      alert_kinds=notify.KINDS, alert_log=notify.recent_log(), wa_on=meta.enabled("whatsapp"), smtp_on=notify.smtp_ready(),
+                      wa_template=bool(config.WHATSAPP_OWNER_TEMPLATE), wa_window=notify.window_open(), ntfy_server=config.NTFY_SERVER,
+                      backups=backup.list_backups(), last_backup=db.get_setting("last_backup"),
                       dishes=shop.menu(), openai_on=bool(config.OPENAI_API_KEY), claude_on=bool(config.ANTHROPIC_API_KEY),
                       stripe_on=payments.configured(), stripe_webhook=bool(config.STRIPE_WEBHOOK_SECRET),
                       meta_callback=f"{config.BASE_URL}/webhook/meta", stripe_callback=f"{config.BASE_URL}/webhook/stripe",
@@ -807,6 +830,23 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 partners[key] = {"on": bool(f.get(f"partner_{key}")), "url": f.get(f"partner_url_{key}", "").strip()[:300],
                                  "commission": min(max(_float(f.get(f"partner_fee_{key}"), 0) or 0, 0), 100)}
             db.set_setting("partners", partners)
+            phone = f.get("owner_phone", "").strip()[:30]
+            if phone and len(shop.wa_number(phone)) < 10:
+                raise ShopError("Enter your own WhatsApp number with the country code, like 07700 900123.")
+            db.set_setting("owner_phone", phone)
+            db.set_setting("owner_email", f.get("owner_email", "").strip()[:120])
+            db.set_setting("alert_kinds", {k: bool(f.get(f"alert_{k}")) for k in notify.KINDS})
+            db.set_setting("alert_whatsapp", bool(f.get("alert_whatsapp")))
+            ntfy_on = bool(f.get("alert_ntfy"))
+            db.set_setting("alert_ntfy", ntfy_on)
+            if ntfy_on and not db.get_setting("ntfy_topic"):
+                db.set_setting("ntfy_topic", "pashtoon-" + secrets.token_urlsafe(12).lower().replace("_", "x").replace("-", "y"))
+            db.set_setting("alert_email", f.get("alert_email") if f.get("alert_email") in ("off", "fallback", "always") else "fallback")
+            qa, qb = f.get("quiet_from", ""), f.get("quiet_to", "")
+            db.set_setting("quiet_from", shop.parse_time(qa) if qa else "")
+            db.set_setting("quiet_to", shop.parse_time(qb) if qb else "")
+            db.set_setting("quiet_urgent", bool(f.get("quiet_urgent")))
+            db.set_setting("backup_email", bool(f.get("backup_email")))
             if f.get("ai_provider") in ("anthropic", "openai"):
                 db.set_setting("ai_provider", f.get("ai_provider"))
             db.set_setting("ai_model", f.get("ai_model", "").strip()[:80])
@@ -882,24 +922,131 @@ def create_app(db_path: str | None = None) -> FastAPI:
             text = (await request.json()).get("text", "")
         if attachments and not text.strip():
             text = "I've attached " + ("a file" if len(attachments) == 1 else "some files") + "."
-        return {"reply": agent.owner_chat(text, attachments), "media": media}
+        return {"reply": await run_in_threadpool(agent.owner_chat, text, attachments), "media": media}
 
     @app.get("/api/owner/history")
     def assistant_history(request: Request):
         need_owner(request)
         return {"history": agent.owner_history()[-30:]}
 
+    # ------------------------------------------------------------ tiffin
+
+    @app.get("/tiffin", response_class=HTMLResponse)
+    def tiffin_page(request: Request):
+        return render(request, "public/tiffin.html", plans=tiffin.plans(), days=tiffin.DAYS, slots=shop.time_slots(),
+                      earliest=(shop.now().date() + timedelta(days=2)).isoformat(), f={})
+
+    @app.post("/tiffin")
+    async def tiffin_signup(request: Request):
+        await check_csrf(request)
+        f = await request.form()
+        if not allow("tiffin:" + ip(request), 10, 3600):
+            raise HTTPException(429, "Too many sign-ups. Please try again later.")
+        try:
+            sub = await run_in_threadpool(
+                tiffin.subscribe, int(f.get("plan_id") or 0), f.get("name", ""), f.get("phone", ""), f.getlist("days"), f.get("time", ""),
+                f.get("start", ""), int(f.get("weeks") or 0), f.get("fulfilment", "collection"), f.get("address", ""), f.get("postcode", ""),
+                f.get("payment", "cash"), f.get("email", ""), f.get("notes", ""))
+        except (ShopError, ValueError) as e:
+            return render(request, "public/tiffin.html", plans=tiffin.plans(), days=tiffin.DAYS, slots=shop.time_slots(),
+                          earliest=(shop.now().date() + timedelta(days=2)).isoformat(), f=dict(f), error=str(e))
+        return RedirectResponse(f"/tiffin/{sub['code']}?new=1", status_code=303)
+
+    @app.get("/tiffin/{code}", response_class=HTMLResponse)
+    def tiffin_track(request: Request, code: str):
+        sub = tiffin.get_by_code(code)
+        if not sub:
+            raise HTTPException(404, "We couldn't find that tiffin plan.")
+        return render(request, "public/tiffin_sub.html", sub=sub, meals=tiffin.meals(sub["id"]), new=request.query_params.get("new"))
+
+    @app.post("/tiffin/{code}/cancel")
+    async def tiffin_cancel(request: Request, code: str):
+        await check_csrf(request)
+        sub = tiffin.get_by_code(code)
+        if not sub:
+            raise HTTPException(404, "We couldn't find that tiffin plan.")
+        msg = tiffin.set_status(sub["id"], "cancelled", by_customer=True)
+        shop.alert("cancel", f"{sub['customer_name']} cancelled their tiffin plan ({sub['plan_name']}).", "/owner/tiffin")
+        return back(f"/tiffin/{code}", msg)
+
+    @app.get("/owner/tiffin", response_class=HTMLResponse)
+    def tiffin_admin(request: Request):
+        need_owner(request)
+        subs = tiffin.subscriptions()
+        for s_ in subs:
+            s_["upcoming"] = len(tiffin.meals(s_["id"]))
+        return render(request, "owner/tiffin.html", plans=tiffin.plans(active_only=False), subs=subs)
+
+    @app.post("/owner/tiffin/plan")
+    async def tiffin_plan_save(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        f = await request.form()
+        try:
+            pid = f.get("plan_id")
+            tiffin.save_plan(int(pid) if pid and pid.isdigit() else None, f.get("name", ""), f.get("description", ""),
+                             int(f.get("max_days") or 5), _float(f.get("price_week"), 0), bool(f.get("active")))
+        except (ShopError, ValueError) as e:
+            return back("/owner/tiffin", error=str(e))
+        return back("/owner/tiffin", "Plan saved.")
+
+    @app.post("/owner/tiffin/{sub_id}/{status}")
+    async def tiffin_sub_status(request: Request, sub_id: int, status: str):
+        need_owner(request)
+        await check_csrf(request)
+        try:
+            msg = tiffin.set_status(sub_id, {"pause": "paused", "resume": "active", "cancel": "cancelled"}.get(status, status))
+        except ShopError as e:
+            return back("/owner/tiffin", error=str(e))
+        return back("/owner/tiffin", msg)
+
+    # ------------------------------------------------------------ alerts and backups (Settings)
+
+    @app.post("/owner/settings/test-alert")
+    async def test_alert(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        results = await run_in_threadpool(notify.send_now, "Test alert: this is how new orders will reach you.", "Test alert")
+        if not results:
+            return back("/owner/settings", error="No alert channel is switched on yet. Add your WhatsApp number, ntfy topic or email, tick it and save first.")
+        return back("/owner/settings", "Test sent: " + "; ".join(f"{c} {'ok' if ok else 'FAILED (' + d + ')'}" for c, ok, d in results))
+
+    @app.post("/owner/settings/backup")
+    async def backup_now(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        name = await run_in_threadpool(backup.run)
+        return back("/owner/settings", f"Backup made: {name}")
+
+    @app.get("/owner/backup/{name}")
+    def backup_download(request: Request, name: str):
+        need_owner(request)
+        if name == "now":
+            data, fname = backup.make_zip(), f"pashtoon-backup-{shop.today()}.zip"
+        else:
+            if name not in [b["name"] for b in backup.list_backups()]:
+                raise HTTPException(404, "No such backup.")
+            data, fname = open(os.path.join(config.BACKUP_DIR, name), "rb").read(), name
+        return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
     # ------------------------------------------------------------ delivery apps
 
-    @app.post("/api/partner-orders")
-    async def partner_order(request: Request):
-        """Orders from Uber Eats, Deliveroo or Just Eat (through a connector such as Zapier, or their own integration).
-        Send the secret from Settings in the X-Partner-Key header."""
+    def _partner_auth(request: Request) -> JSONResponse | None:
+        """The secret from Settings, in the X-Partner-Key header or (for email services that can't set headers) ?key=."""
         key = db.get_setting("partner_key") or ""
-        if not key or not secrets.compare_digest(request.headers.get("x-partner-key", ""), key):
+        given = request.headers.get("x-partner-key", "") or request.query_params.get("key", "")
+        if not key or not secrets.compare_digest(given, key):
             return JSONResponse({"error": "Wrong partner key."}, status_code=401)
         if not allow("partner:" + ip(request), 120, 600):
             return JSONResponse({"error": "Too many requests."}, status_code=429)
+        return None
+
+    @app.post("/api/partner-orders")
+    async def partner_order(request: Request):
+        """Orders from Uber Eats, Deliveroo or Just Eat (through Zapier or another connector). JSON: partner, items
+        [{dish, portion, qty}], name, date, time, total, reference, notes, phone."""
+        if (bad := _partner_auth(request)):
+            return bad
         try:
             b = await request.json()
             lines = [{"option_id": shop.find_option(i.get("dish", ""), i.get("portion", ""))["id"], "qty": int(i.get("qty") or 1)}
@@ -909,7 +1056,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
                                          str(b.get("notes", "")), str(b.get("phone", "")))
         except (ShopError, ValueError, AttributeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
-        return {"ok": True, "order_id": o["id"], "total": o["total"], "commission": o["partner_fee"]}
+        return {"ok": True, "order_id": o["id"], "total": o["total"], "commission": o["partner_fee"], "duplicate": bool(o.get("duplicate"))}
+
+    @app.post("/api/partner-orders/email")
+    async def partner_order_email(request: Request):
+        """A delivery app's order email, forwarded by an inbound-email service. Accepts JSON or a form with subject, text
+        (or plain / body-plain / TextBody), from, and optionally partner."""
+        if (bad := _partner_auth(request)):
+            return bad
+        try:
+            if "json" in request.headers.get("content-type", ""):
+                f = await request.json()
+            else:
+                f = dict((await request.form()).items())
+            text = str(f.get("text") or f.get("plain") or f.get("body-plain") or f.get("TextBody") or f.get("body") or "")[:20000]
+            o = partners_mod.import_email(text, str(f.get("subject") or f.get("Subject") or ""), str(f.get("from") or f.get("From") or f.get("sender") or ""),
+                                          str(f.get("partner") or request.query_params.get("partner") or ""))
+        except (ShopError, ValueError, AttributeError) as e:
+            shop.alert("question", f"A delivery-app email couldn't be read: {e} Check it by hand.", "/owner/orders")
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return {"ok": True, "order_id": o["id"], "total": o["total"], "duplicate": bool(o.get("duplicate"))}
 
     # ------------------------------------------------------------ accounts
 

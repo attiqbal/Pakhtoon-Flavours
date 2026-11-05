@@ -39,6 +39,15 @@
   };
 
   // menu page
+  // keep basket prices in step with the menu if she changed a price while the basket was kept
+  (function () {
+    const c = PF.cart(); let changed = false;
+    document.querySelectorAll(".opt[data-option]").forEach((opt) => {
+      const line = c.find((x) => x.option_id === Number(opt.dataset.option));
+      if (line && line.price !== Number(opt.dataset.price)) { line.price = Number(opt.dataset.price); changed = true; }
+    });
+    if (changed) PF.save(c);
+  })();
   document.querySelectorAll(".opt[data-option]").forEach((opt) => {
     PF.paintOption(opt);
     opt.querySelector("[data-add]").addEventListener("click", () => PF.setQty(opt, 1));

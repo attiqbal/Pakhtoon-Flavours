@@ -85,3 +85,22 @@ def send_text(channel: str, to: str, text: str) -> bool:
     except httpx.HTTPError:
         log.exception("%s send failed", channel)
         return False
+
+
+def send_template(to: str, name: str, lang: str, params: list[str]) -> bool:
+    """A WhatsApp template message: the only kind allowed outside the 24 hour window."""
+    if not enabled("whatsapp") or not to or not name:
+        return False
+    body = {"messaging_product": "whatsapp", "to": to, "type": "template",
+            "template": {"name": name, "language": {"code": lang},
+                         "components": [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}] if params else []}}
+    try:
+        r = httpx.post(f"{GRAPH}/{config.WHATSAPP_PHONE_ID}/messages", json=body, timeout=15,
+                       headers={"Authorization": f"Bearer {config.WHATSAPP_TOKEN}"})
+        if r.status_code >= 300:
+            log.warning("whatsapp template failed: %s %s", r.status_code, r.text[:300])
+            return False
+        return True
+    except httpx.HTTPError:
+        log.exception("whatsapp template failed")
+        return False

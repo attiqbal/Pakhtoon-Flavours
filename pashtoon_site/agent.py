@@ -2,10 +2,11 @@
 the business from the dashboard. It can only act through the tools below, which call the same rules as the website."""
 import json
 import logging
+import os
 import secrets
 from datetime import timedelta
 
-from . import accounts, config, llm, shop, skills
+from . import accounts, config, llm, notify, shop, skills, tiffin
 from .db import execute, q, q1
 from .shop import ShopError, money
 
@@ -54,6 +55,12 @@ CUSTOMER_TOOLS = [
           {"order_id": I, "phone": S}, ["order_id", "phone"]),
     _tool("report_payment", "The customer says they've paid. The owner checks her bank; never confirm payment yourself.",
           {"order_id": I, "phone": S}, ["order_id", "phone"]),
+    _tool("get_tiffin_plans", "The tiffin (weekly meal) plans on offer, with prices."),
+    _tool("sign_up_tiffin", "Sign the customer up to a tiffin plan, after they confirmed plan, days, start date, time and weeks. Meals are cooked fresh each day and paid weekly.",
+          {"plan": {**S, "description": "Plan name or id from get_tiffin_plans"}, "days": {"type": "array", "items": S, "description": "e.g. Mon, Tue, Wed"},
+           "start_date": S, "time": S, "weeks": {**I, "description": "0 = until they cancel"}, "name": S, "phone": S,
+           "payment_method": {"type": "string", "enum": ["cash", "bank"]}, "address": S, "postcode": S, "fulfilment": {"type": "string", "enum": ["collection", "delivery"]},
+           "notes": S}, ["plan", "days", "start_date", "time", "name", "phone"]),
     _tool("ask_owner", "Pass a question or request to the owner (changes, cancellations, complaints, allergies, catering, "
           "anything you can't answer). She replies in this chat.", {"summary": S}, ["summary"]),
 ]
@@ -104,6 +111,15 @@ OWNER_TOOLS = [
     _tool("update_settings", "Change ordering switches: accepting_orders, offers_collection, offers_delivery, announcement (text).",
           {"accepting_orders": {"type": "boolean"}, "offers_collection": {"type": "boolean"}, "offers_delivery": {"type": "boolean"}, "announcement": S}),
     # accounts
+    _tool("list_tiffin", "Tiffin plans (with ids) and current subscribers."),
+    _tool("save_tiffin_plan", "Add or change a tiffin plan. Leave plan_id out to add a new one.",
+          {"plan_id": I, "name": S, "description": S, "max_days": {**I, "description": "most meals per week"}, "price_week": N, "active": {"type": "boolean"}},
+          ["name", "price_week"]),
+    _tool("set_tiffin_status", "Pause, resume or cancel a subscriber's tiffin (id from list_tiffin).",
+          {"subscription_id": I, "status": {"type": "string", "enum": ["active", "paused", "cancelled"]}}, ["subscription_id", "status"]),
+    _tool("alert_settings", "Change how and when the owner is alerted. Any of: whatsapp (bool), ntfy (bool), email_mode (off/fallback/always), owner_phone, owner_email, quiet_from, quiet_to (HH:MM, empty to clear), alert types new_orders etc: order, question, message, cancel, payment (bool). Also sends a test when test is true.",
+          {"whatsapp": {"type": "boolean"}, "ntfy": {"type": "boolean"}, "email_mode": S, "owner_phone": S, "owner_email": S, "quiet_from": S, "quiet_to": S,
+           "kinds": {"type": "object", "properties": {k: {"type": "boolean"} for k in notify.KINDS}}, "test": {"type": "boolean"}}),
     _tool("income_statement", "Profit and loss between two dates, from the books.", {"start": S, "end": S}, ["start", "end"]),
     _tool("balance_sheet", "Assets, liabilities and equity on a date.", {"date": S}, ["date"]),
     _tool("cash_flow", "Cash flow statement between two dates.", {"start": S, "end": S}, ["start", "end"]),
@@ -270,6 +286,51 @@ def _run(ctx: Ctx, name: str, a: dict) -> str:
             raise ShopError("No such chat.")
         owner_reply(conv["id"], a["text"])
         return "Sent."
+    if name == "get_tiffin_plans":
+        return tiffin.plans_text()
+    if name == "sign_up_tiffin":
+        p = tiffin.find_plan(a["plan"])
+        s_ = tiffin.subscribe(p["id"], a["name"], a["phone"], a["days"], a["time"], a["start_date"], int(a.get("weeks") or 0),
+                              a.get("fulfilment") or "collection", a.get("address", ""), a.get("postcode", ""),
+                              a.get("payment_method") or "cash", notes=a.get("notes", ""))
+        return (f"Signed up: {s_['plan_name']}, {s_['day_names']} at {s_['time']} from {s_['start_date']}, £{s_['week_total']:.2f} a week, paid weekly by "
+                f"{s_['payment_method']}. Their page with all the meals: {config.BASE_URL}/tiffin/{s_['code']}. Each meal needs 24 hours' notice to cancel.")
+    if name == "list_tiffin":
+        subs = tiffin.subscriptions()
+        return (tiffin.plans_text() + "\n" + ("\n".join(f"Subscription {x['id']}: {x['customer_name']} {x['phone']}, {x['plan_name']}, {x['day_names']} at {x['time']}, "
+                f"{x['status']}" for x in subs) or "No subscribers yet."))
+    if name == "save_tiffin_plan":
+        pid = tiffin.save_plan(int(a["plan_id"]) if a.get("plan_id") else None, a["name"], a.get("description", ""), int(a.get("max_days") or 5),
+                               float(a["price_week"]), a.get("active", True))
+        return f"Saved plan {pid}: {a['name']}, £{float(a['price_week']):.2f} a week. It shows on the tiffin page and customers are told about it."
+    if name == "set_tiffin_status":
+        return tiffin.set_status(int(a["subscription_id"]), a["status"])
+    if name == "alert_settings":
+        from .db import set_setting
+        done = []
+        for key, setting_key in (("whatsapp", "alert_whatsapp"), ("ntfy", "alert_ntfy")):
+            if key in a:
+                set_setting(setting_key, bool(a[key])); done.append(f"{key} {'on' if a[key] else 'off'}")
+        if a.get("email_mode") in ("off", "fallback", "always"):
+            set_setting("alert_email", a["email_mode"]); done.append(f"email {a['email_mode']}")
+        for key in ("owner_phone", "owner_email"):
+            if key in a:
+                set_setting(key, a[key].strip()[:120]); done.append(f"{key} saved")
+        for key in ("quiet_from", "quiet_to"):
+            if key in a:
+                set_setting(key, shop.parse_time(a[key]) if a[key] else ""); done.append(f"{key} set")
+        if a.get("kinds"):
+            kinds = dict(shop.setting("alert_kinds") or {})
+            kinds.update({k: bool(v) for k, v in a["kinds"].items() if k in notify.KINDS})
+            set_setting("alert_kinds", kinds); done.append("alert types updated")
+        if shop.setting("alert_ntfy") and not shop.setting("ntfy_topic"):
+            import secrets as _s
+            set_setting("ntfy_topic", "pashtoon-" + _s.token_urlsafe(12).lower().replace("_", "x").replace("-", "y"))
+            done.append("ntfy topic made (see Settings)")
+        if a.get("test"):
+            res = notify.send_now("Test alert: this is how new orders will reach you.", "Test alert")
+            done.append("test: " + ("; ".join(f"{c} {'ok' if ok else 'failed ' + d}" for c, ok, d in res) or "no channel switched on"))
+        return "Done: " + ", ".join(done) if done else "Nothing to change."
     if name == "add_menu_item":
         opts = [(None, p["label"], float(p["price"])) for p in a.get("portions") or []]
         iid = shop.save_item(None, a["name"], a["section"], a.get("description", ""), int(a.get("notice_hours") or 24), opts,
@@ -566,7 +627,8 @@ def owner_chat(text: str, attachments: list[dict] | None = None) -> str:
     content = [{"type": "text", "text": f"[{_stamp()}] {text}"}]
     for att in attachments or []:
         content[0]["text"] += f"\n[Attached {att['kind']} saved to the media library as media id {att['id']}: {att.get('title', '')}]"
-        if att["kind"] == "image":
+        # The AI only looks at photos up to about 5 MB; bigger ones are still saved and can be used on dishes.
+        if att["kind"] == "image" and os.path.getsize(att["path"]) <= 3_700_000:
             import base64
             try:
                 data = base64.b64encode(open(att["path"], "rb").read()).decode()

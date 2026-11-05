@@ -40,9 +40,9 @@
     <div class="summary-line"><b>Cash at the end</b><b>{{ money(data.closing) }}</b></div>
     <p class="small muted">Cash in hand, bank and Stripe together.</p>
   {% elif report == 'trial' %}
-    <table class="list"><thead><tr><th>Code</th><th>Account</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead><tbody>
+    <div class="scroll-x"><table class="list"><thead><tr><th>Code</th><th>Account</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead><tbody>
     {% for r in data.rows %}<tr><td>{{ r.code }}</td><td><a href="?report=trial&start={{ start }}&end={{ end }}&account={{ r.code }}">{{ r.name }}</a></td><td style="text-align:right">{{ money(r.debit) if r.debit else '' }}</td><td style="text-align:right">{{ money(r.credit) if r.credit else '' }}</td></tr>{% endfor %}
-    <tr><td></td><td><b>Total</b></td><td style="text-align:right"><b>{{ money(data.debit) }}</b></td><td style="text-align:right"><b>{{ money(data.credit) }}</b></td></tr></tbody></table>
+    <tr><td></td><td><b>Total</b></td><td style="text-align:right"><b>{{ money(data.debit) }}</b></td><td style="text-align:right"><b>{{ money(data.credit) }}</b></td></tr></tbody></table></div>
     {% if data.balanced %}<p class="small muted">Debits equal credits.</p>{% else %}<div class="alert error">Debits and credits differ.</div>{% endif %}
   {% elif report == 'tax' %}
     <p class="small muted">Tax year {{ data.year }} · {{ data.start }} to {{ data.end }} · cash basis (money in when it arrives, costs when paid)</p>
@@ -70,8 +70,8 @@
       {% for a, dr, cr in j.lines %}<div class="summary-line small"><span>&nbsp;&nbsp;{{ a }} {{ acc.name(a) }}</span><span>{{ money(dr) if dr else '' }}{{ ' / ' ~ money(cr) if cr else '' }}</span></div>{% endfor %}</div>
     {% else %}<p class="muted">No journals in this period.</p>{% endfor %}
   {% else %}
-    <table class="list"><thead><tr><th>Code</th><th>Account</th><th>Type</th></tr></thead><tbody>
-    {% for c, n, t, p in data.chart %}<tr><td>{{ c }}</td><td>{% if not p %}<b>{{ n }}</b>{% else %}{{ '&nbsp;&nbsp;&nbsp;'|safe if acc.ACCOUNTS[p].parent else '&nbsp;&nbsp;'|safe }}{{ n }}{% endif %}</td><td class="small faint">{{ acc.TYPE_NAMES[t] }}</td></tr>{% endfor %}</tbody></table>
+    <div class="scroll-x"><table class="list"><thead><tr><th>Code</th><th>Account</th><th>Type</th></tr></thead><tbody>
+    {% for c, n, t, p in data.chart %}<tr><td>{{ c }}</td><td>{% if not p %}<b>{{ n }}</b>{% else %}{{ '&nbsp;&nbsp;&nbsp;'|safe if acc.ACCOUNTS[p].parent else '&nbsp;&nbsp;'|safe }}{{ n }}{% endif %}</td><td class="small faint">{{ acc.TYPE_NAMES[t] }}</td></tr>{% endfor %}</tbody></table></div>
   {% endif %}
 </div>
 

@@ -1,0 +1,30 @@
+# Run on any small server (a £4 a month VPS is plenty):  docker compose up -d
+# HTTPS is automatic through Caddy once DOMAIN points at the server.
+services:
+  site:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PASHTOON_DATA_DIR: /data
+      PASHTOON_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - site-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    command: caddy reverse-proxy --from ${DOMAIN} --to site:8000
+    volumes:
+      - caddy-data:/data
+    depends_on: [site]
+volumes:
+  site-data:
+  caddy-data:

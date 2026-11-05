@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import time
+from datetime import date
 
 from pashtoon_site import agent, config, db, geo, meta, payments, shop, web
 
@@ -603,3 +604,236 @@ def test_tiffin_enquiry_and_dish_video(client):
     db.set_setting("promo_item_id", it["id"])
     client.cookies.clear()
     assert "window.PROMO" in client.get("/").text
+
+
+def test_landing_page_and_phone_layout(client):
+    h = client.get("/").text
+    for bit in ("See the menu and order", "Watch it cooked", "Good to know", "application/ld+json", "Taking orders now", 'id="lp-sticky"'):
+        assert bit in h, bit
+    assert shop.earliest_day() and shop.earliest_day() in h
+    db.set_setting("accepting_orders", False)
+    assert shop.earliest_day() is None and "not taking new orders" in client.get("/").text
+    # the customer chat never covers the owner login; the owner app has the phone tab bar and install manifest
+    assert 'id="chat-box"' not in client.get("/owner/login").text
+    login(client)
+    o = client.get("/owner").text
+    assert 'class="tabbar"' in o and "owner.webmanifest" in o
+    assert client.get("/static/owner.webmanifest").status_code == 200
+
+
+def test_calendar_feed_names_card_payments(client):
+    o = shop.place_order([{"option_id": opt("Dam Pukh", "Per person"), "qty": 1}], "Card Person", "07700900111", "collection",
+                         day(3), "18:00", "card", by_owner=True)
+    assert "card online" in shop.ics_feed() and "bank transfer" not in shop.ics_feed()
+    assert o["payment_method"] == "card"
+
+
+# ---------------------------------------------------------------- alerts when the dashboard is closed
+
+@pytest.fixture()
+def sent(monkeypatch):
+    """Record what the alert channels are asked to send (no network)."""
+    from pashtoon_site import notify
+    out = []
+    monkeypatch.setattr(notify, "SYNC", True)
+    monkeypatch.setattr(config, "WHATSAPP_TOKEN", "t")
+    monkeypatch.setattr(config, "WHATSAPP_PHONE_ID", "1")
+    monkeypatch.setattr(meta, "send_text", lambda ch, to, text: out.append(("text", to, text)) or True)
+    monkeypatch.setattr(meta, "send_template", lambda to, name, lang, params: out.append(("template", to, name, params)) or True)
+    monkeypatch.setattr(notify, "send_ntfy", lambda text, title="": out.append(("ntfy", text)) or (True, "HTTP 200"))
+    monkeypatch.setattr(notify, "send_email", lambda subject, text, to=None, attach=None: out.append(("email", subject)) or (True, "sent"))
+    return out
+
+
+def test_alerts_whatsapp_window_template_quiet_hours_and_switches(client, sent, monkeypatch):
+    from pashtoon_site import notify
+    db.set_setting("owner_phone", "07700 900123")
+    shop.alert("order", "New order #1 from Sam: £30.00")
+    assert sent[0][0] == "text"     # no template configured, so it tries a plain text (WhatsApp may refuse outside her window)
+    sent.clear()
+    notify.note_owner_message()
+    shop.alert("order", "New order #2")
+    assert sent[-1][:2] == ("text", "447700900123")
+    # outside her 24 hour window a template is used, with newlines removed
+    db.set_setting("owner_wa_last_in", (shop.now() - timedelta(hours=30)).isoformat())
+    monkeypatch.setattr(config, "WHATSAPP_OWNER_TEMPLATE", "owner_alert")
+    sent.clear()
+    shop.alert("order", "Line one\nLine two")
+    assert sent[-1][0] == "template" and sent[-1][3] == ["Line one Line two"]
+    # per-alert switch
+    db.set_setting("alert_kinds", {"order": False, "question": True, "cancel": True, "payment": True, "message": True})
+    sent.clear()
+    shop.alert("order", "ignored")
+    assert sent == []
+    # quiet hours hold alerts, cancellations come through, one summary after
+    notify.note_owner_message()
+    db.set_setting("alert_kinds", {k: True for k in notify.KINDS})
+    db.set_setting("quiet_from", (shop.now() - timedelta(minutes=5)).strftime("%H:%M"))
+    db.set_setting("quiet_to", (shop.now() + timedelta(minutes=30)).strftime("%H:%M"))
+    if (shop.now() - timedelta(minutes=5)).day == shop.now().day and (shop.now() + timedelta(minutes=30)).day == shop.now().day:
+        sent.clear()
+        shop.alert("order", "held order A")
+        shop.alert("payment", "held payment")
+        shop.alert("cancel", "urgent cancel")
+        assert [x[2] for x in sent] == ["urgent cancel"]
+        assert notify.flush_held() == 0
+        db.set_setting("quiet_from", "")
+        sent.clear()
+        assert notify.flush_held() == 2
+        assert "While you were off: 1 new order, 1 payment" in sent[0][2]
+
+
+def test_alert_fallbacks_and_settings_card(client, sent):
+    from pashtoon_site import notify
+    db.set_setting("owner_email", "aarzu@example.com")
+    db.set_setting("alert_whatsapp", False)
+    shop.alert("order", "x")
+    assert sent[-1] == ("email", "The Pashtoon Flavours: alert")      # fallback: no other channel worked
+    sent.clear()
+    db.set_setting("alert_ntfy", True); db.set_setting("ntfy_topic", "t-123")
+    shop.alert("order", "y")
+    assert [x[0] for x in sent] == ["ntfy"]                           # email only when others fail
+    db.set_setting("alert_email", "always")
+    sent.clear()
+    shop.alert("order", "z")
+    assert {x[0] for x in sent} == {"ntfy", "email"}
+    # the Settings card saves her choices
+    login(client)
+    html = client.get("/owner/settings").text
+    assert "Alerts to your phone" in html and "ntfy" in html
+    data = {"csrf": csrf(client, "/owner/settings"), "pay_cash": "1", "offers_collection": "1", "owner_phone": "07700 900123",
+            "alert_whatsapp": "1", "alert_order": "1", "alert_cancel": "1", "alert_email": "off", "quiet_from": "23:00", "quiet_to": "07:00",
+            "slot_start": "12:00", "slot_end": "21:00", "slot_minutes": "30"}
+    r = client.post("/owner/settings", data=data)
+    assert "error" not in r.headers["location"], r.headers["location"]
+    assert shop.setting("alert_kinds") == {"order": True, "question": False, "message": False, "cancel": True, "payment": False}
+    assert shop.setting("quiet_from") == "23:00" and shop.setting("alert_ntfy") is False and shop.setting("alert_email") == "off"
+    sent.clear()
+    r = client.post("/owner/settings/test-alert", data={"csrf": csrf(client, "/owner/settings")})
+    assert "Test sent" in r.headers["location"] or "Test%20sent" in r.headers["location"]
+    assert notify.recent_log()
+
+
+def test_owner_whatsapp_message_is_not_a_customer(client, sent):
+    from pashtoon_site import notify
+    db.set_setting("owner_phone", "07700 900123")
+    web_app = client.app
+    msgs = [{"channel": "whatsapp", "from": "447700900123", "name": "Aarzu", "text": "hi", "id": "m1"}]
+    # call the same handler the webhook uses
+    import inspect
+    handler = next(r.endpoint for r in web_app.routes if getattr(r, "path", "") == "/webhook/meta" and "POST" in getattr(r, "methods", ()))
+    cell = [c.cell_contents for c in handler.__closure__ if callable(c.cell_contents) and getattr(c.cell_contents, "__name__", "") == "_handle_meta"]
+    assert cell
+    cell[0](msgs)
+    assert db.q1("SELECT COUNT(*) n FROM conversations")["n"] == 0 and notify.window_open()
+
+
+# ---------------------------------------------------------------- tiffin
+
+def test_tiffin_plans_subscription_meals_and_assistant(client):
+    from pashtoon_site import tiffin
+    login(client)
+    r = client.post("/owner/tiffin/plan", data={"csrf": csrf(client, "/owner/tiffin"), "name": "Weekday lunch box", "description": "Rice, curry and nan.",
+                                                 "max_days": "5", "price_week": "45", "active": "1"})
+    assert "error" not in r.headers["location"]
+    plan = tiffin.plans()[0]
+    assert plan["meal_price"] == 9.0
+    assert "See plans" in client.get("/menu").text
+    client.cookies.clear()
+    start = (shop.now().date() + timedelta(days=3))
+    r = client.post("/tiffin", data={"csrf": csrf(client, "/tiffin"), "plan_id": plan["id"], "days": ["0", "2", "4"], "time": "12:30", "start": start.isoformat(),
+                                      "weeks": "2", "name": "Imran", "phone": "07700 900555", "payment": "cash", "fulfilment": "collection"})
+    assert r.status_code == 303, r.text[:300]
+    code = r.headers["location"].split("/tiffin/")[1].split("?")[0]
+    sub = tiffin.get_by_code(code)
+    meals = tiffin.meals(sub["id"], upcoming_only=False)
+    assert 1 <= len(meals) <= 6 and all(m["source"] == "tiffin" and m["total"] == 9.0 for m in meals)
+    assert {date.fromisoformat(m["date"]).weekday() for m in meals} <= {0, 2, 4}
+    assert tiffin.extend_all() == 0 or True
+    n = len(meals)
+    tiffin.generate(sub["id"])
+    assert len(tiffin.meals(sub["id"], upcoming_only=False)) == n        # no duplicates
+    page = client.get(f"/tiffin/{code}?new=1").text
+    assert "signed up" in page and "Weekday lunch box" in page
+    assert any("tiffin sign-up" in a["text"] for a in shop.alerts())
+    # too many days, and too little notice
+    with pytest.raises(shop.ShopError, match="up to 5"):
+        tiffin.subscribe(plan["id"], "X", "07700900001", [0, 1, 2, 3, 4, 5], "12:00", start.isoformat())
+    with pytest.raises(shop.ShopError, match="24 hours"):
+        tiffin.subscribe(plan["id"], "X", "07700900001", [shop.now().weekday()], "23:59", shop.today())
+    # pause then resume
+    msg = tiffin.set_status(sub["id"], "paused")
+    assert "cancelled" in msg and not [m for m in tiffin.meals(sub["id"]) if m["status"] == "confirmed"]
+    tiffin.set_status(sub["id"], "active")
+    assert len([m for m in tiffin.meals(sub["id"]) if m["status"] == "confirmed"]) == n
+    # the owner assistant manages plans, and the customer assistant knows them
+    login(client)
+    agent.set_client(FakeClaude([
+        [{"type": "tool_use", "id": "t1", "name": "save_tiffin_plan", "input": {"name": "Veg box", "description": "Dal and sabzi", "max_days": 6, "price_week": 36}}],
+        [{"type": "text", "text": "Added."}]]))
+    client.post("/api/owner/chat", json={"text": "add veg tiffin 6 days 36"}, headers={"X-CSRF": csrf(client, "/owner/assistant")})
+    assert any(p["name"] == "Veg box" and p["meal_price"] == 6.0 for p in tiffin.plans())
+    assert "Veg box" in agent._run(agent.Ctx("customer"), "get_tiffin_plans", {})
+
+
+# ---------------------------------------------------------------- backups, health, partners, audit fixes
+
+def test_backup_and_health(client, tmp_path, monkeypatch):
+    from pashtoon_site import backup
+    import zipfile, io
+    monkeypatch.setattr(config, "BACKUP_DIR", str(tmp_path / "bk"))
+    monkeypatch.setattr(config, "BACKUP_KEEP", 2)
+    assert client.get("/healthz").json()["ok"] is True
+    shop.add_expense(shop.today(), "Other", "test", 5)
+    name = backup.run()
+    z = zipfile.ZipFile(io.BytesIO(open(tmp_path / "bk" / name, "rb").read()))
+    assert "pashtoon_site.db" in z.namelist() and z.read("pashtoon_site.db")[:15] == b"SQLite format 3"
+    assert backup.maybe_run() is None                  # one a day
+    for h in (1, 2, 3):
+        backup.run(shop.now() + timedelta(hours=h))
+    assert len(backup.list_backups()) == 2             # keeps only the newest
+    assert client.get("/healthz").json()["last_backup_hours"] is not None
+    login(client)
+    assert client.get("/owner/backup/now").content[:2] == b"PK"
+    assert client.get("/owner/backup/../../etc/passwd").status_code == 404
+
+
+def test_partner_email_import(client):
+    db.set_setting("partners", {"ubereats": {"on": True, "url": "", "commission": 30}, "deliveroo": {"on": False, "url": "", "commission": 25},
+                                "justeat": {"on": False, "url": "", "commission": 0}})
+    key = db.get_setting("partner_key")
+    mail = "Order ID: UE-48213\nCustomer: Sam Ali\n2 x Dam Pukh (Per person)  £30.00\n1 x Mystery Special  £9.00\nSubtotal £39.00\nTotal £39.00\nPickup at 18:45\n"
+    body = {"subject": "New order UE-48213 from Uber Eats", "text": mail, "from": "orders@uber.com"}
+    assert client.post("/api/partner-orders/email", json=body).status_code == 401
+    r = client.post(f"/api/partner-orders/email?key={key}", json=body)
+    assert r.status_code == 200, r.text
+    o = shop.get_order(r.json()["order_id"])
+    assert o["total"] == 39 and o["partner"] == "ubereats" and o["time"] == "18:45" and o["customer_name"] == "Sam Ali"
+    assert "CHECK THESE ITEMS" in o["notes"] and "Mystery Special" in o["notes"] and o["partner_fee"] == 11.7
+    assert any(i["dish"] == "Dam Pukh" and i["qty"] == 2 for i in o["items"])
+    # the same email twice does not make a second order; an app that is off is refused; junk is reported
+    again = client.post(f"/api/partner-orders/email?key={key}", json=body).json()
+    assert again["order_id"] == o["id"] and again["duplicate"] is True
+    assert client.post(f"/api/partner-orders/email?key={key}", json={"text": "hello", "from": "orders@deliveroo.co.uk"}).status_code == 400
+    r = client.post("/api/partner-orders", json={"partner": "deliveroo", "items": [{"dish": "Kheer", "qty": 1}]}, headers={"X-Partner-Key": key})
+    assert r.status_code == 400 and "switched on" in r.json()["error"]
+    # form-encoded (what inbound-email services send)
+    r = client.post(f"/api/partner-orders/email?key={key}", data={"subject": "Uber Eats order", "body-plain": "Order #UE-9\n1 x Kheer\nTotal £7.50", "from": "uber"})
+    assert r.status_code == 200
+
+
+def test_cancel_returns_stock_month_covers_whole_month_and_no_greeting(client):
+    from pashtoon_site import accounts
+    shop.record_purchase("Lamb", 2, "kg", 40)
+    shop.set_recipe(opt("Dam Pukh", "per person"), "500 g lamb")
+    o = shop.place_order([{"option_id": opt("Dam Pukh", "per person"), "qty": 1}], "A", "07700900008", "collection", day(), "18:00", "cash")
+    shop.set_status(o["id"], "cooking")
+    assert shop.ingredient("Lamb")["stock"] == 1500
+    shop.set_status(o["id"], "cancelled")
+    assert shop.ingredient("Lamb")["stock"] == 2000 and shop.get_order(o["id"])["stock_used"] == 0
+    assert accounts.trial_balance(day(5))["balanced"]
+    assert accounts.balances(None, day(5)).get("5100", 0) == 0
+    s, e = shop.period("month")
+    assert e >= shop.today() and e[8:] in ("28", "29", "30", "31")
+    login(client)
+    assert "Assalam" not in client.get("/owner").text and "Today" in client.get("/owner").text

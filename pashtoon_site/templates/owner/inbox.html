@@ -3,7 +3,7 @@
 {% block main %}
 <div class="topbar"><div><span class="eyebrow">Customer chats</span><h1>Messages</h1></div>
   <p class="small muted" style="max-width:420px">{% if ai_on and st.ai_enabled %}{{ st.assistant_name }} (AI) answers customers straight away. Step in any time: your reply pauses it for that chat.{% else %}The AI assistant is off, so customers get a short "we'll reply shortly" message and you answer here.{% endif %}</p></div>
-<div class="inbox">
+<div class="inbox {% if current %}has-current{% endif %}">
   <div class="threads">
     {% for c in convs %}
     <a href="/owner/inbox/{{ c.id }}" class="{% if current and current.id == c.id %}on{% endif %}">
@@ -15,6 +15,7 @@
   </div>
   {% if current %}
   <div class="convo">
+    <a class="sm-only back-link" href="/owner/inbox">← All chats</a>
     <div class="row between" style="padding:16px 18px;border-bottom:1px solid var(--line)">
       <div><b>{{ current.name or 'Customer' }}</b> <span class="faint small">{{ current.channel }}{% if current.contact %} · {{ current.contact }}{% endif %}</span></div>
       <div class="row">

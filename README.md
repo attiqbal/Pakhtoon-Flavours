@@ -28,6 +28,13 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Settings**: taking orders on/off, hours, daily limit, delivery bands, bank details, review link, banner message, AI on/off and name, password, new kitchen/calendar links.
 - **WhatsApp, Instagram and Facebook Messenger (optional)**: the same assistant answers on Meta's apps through one webhook, `/webhook/meta`, and those chats land in Messages too. Settings shows which are connected.
 
+## On a phone
+
+The whole site is built for phones first. Customers get a landing page with her cooking clips, swipeable dishes and an
+FAQ, a compact menu, and a full-screen chat. Her dashboard has a bottom tab bar (Today, Orders, Messages, Kitchen,
+More), and lists turn into cards. On her iPhone she can open `/owner` in Safari and choose Share > Add to Home Screen:
+it then opens like an app.
+
 ## Run it
 
 **GitHub Codespaces**: open the repository in a Codespace. It installs everything and runs `start.sh`, which prints the website address and her first password. The site runs on port 8000.
@@ -52,6 +59,16 @@ Collection only is the default. Delivery by her is one tick in Settings. Uber Ea
 
 Claude Opus 5.5 by default. In Settings (or `.env`) pick Claude or ChatGPT (`AI_PROVIDER=openai`, `OPENAI_API_KEY`), and any model name. Any OpenAI-compatible service works by setting `OPENAI_BASE_URL`. The assistant's playbooks are plain markdown files in `pashtoon_site/skills/` (customer service, menu editing, bookkeeping, stock). Edit or add one to teach it something.
 
+## Alerts, tiffin, backups
+
+- **Alerts when the dashboard is closed** (Settings > Alerts to your phone): WhatsApp to her personal number, the free ntfy app, or email; she picks channels and which alerts (orders, customer needs you, messages, cancellations, payments), plus quiet hours with one summary afterwards. Send a test from Settings.
+- **Tiffin** (Owner > Tiffin, public page `/tiffin`): plans with a weekly price; customers pick days, time, start date and length; each meal becomes an order on the kitchen screen, topped up daily. Paid weekly in cash or by transfer. The assistant can add and change plans and pause or cancel subscribers.
+- **Delivery app orders**: switch each app on in Settings; forward its order emails to the email intake URL shown there (best effort, unmatched items are flagged), or post JSON to `/api/partner-orders`.
+- **Backups**: daily to `/data/backups` (newest 30), download from Settings, optional weekly email. `GET /healthz` for host health checks.
+
+### Not tested with real accounts
+WhatsApp alerts and templates, SMTP email, the ntfy server, and the delivery-app email parser (checked against sample text I wrote, not real Uber Eats, Deliveroo or Just Eat emails) have only been tested with mocks.
+
 ## Dish videos
 
 Each dish can have a video (Menu > dish page, or send one to the assistant): a "Watch" button on the menu card, and one dish can pop up as an ad once per visit (Settings > AI assistant > popup).
@@ -60,7 +77,7 @@ Each dish can have a video (Menu > dish page, or send one to the assistant): a "
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q              # 32 tests, no network or API key needed
+pytest -q              # 34 tests, no network or API key needed
 ```
 
 ## How it fits together
@@ -109,7 +126,7 @@ No card details ever reach this site.
 
 ## Going live later
 
-The `Dockerfile` runs the site with its data in `/data`. Any host that runs a container with a small disk works (Railway, Fly.io, a VPS). Set `PASHTOON_BASE_URL` to the real address, `SESSION_SECRET` to a long random string, `OWNER_PASSWORD`, and `ANTHROPIC_API_KEY`. Keys only ever go in `.env` or the host's settings, never in the code or a chat: `.env` is ignored by git.
+See **DEPLOY.md** (Docker with automatic HTTPS, Fly.io or Railway, health check, backups and restore). In short: the `Dockerfile` runs the site with its data in `/data`. Any host that runs a container with a small disk works (Railway, Fly.io, a VPS). Set `PASHTOON_BASE_URL` to the real address, `SESSION_SECRET` to a long random string, `OWNER_PASSWORD`, and `ANTHROPIC_API_KEY`. Keys only ever go in `.env` or the host's settings, never in the code or a chat: `.env` is ignored by git.
 
 ## Still needed from her
 

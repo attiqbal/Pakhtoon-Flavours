@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS journals (
 CREATE TABLE IF NOT EXISTS journal_lines (
   id INTEGER PRIMARY KEY, journal_id INTEGER NOT NULL REFERENCES journals(id) ON DELETE CASCADE,
   account TEXT NOT NULL, debit REAL NOT NULL DEFAULT 0, credit REAL NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS notify_log (
+  id INTEGER PRIMARY KEY, channel TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS tiffin_plans (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', max_days INTEGER NOT NULL DEFAULT 5,
+  price_week REAL NOT NULL, active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS tiffin_subs (
+  id INTEGER PRIMARY KEY, code TEXT UNIQUE NOT NULL, plan_id INTEGER NOT NULL REFERENCES tiffin_plans(id),
+  plan_name TEXT NOT NULL, customer_name TEXT NOT NULL, phone TEXT NOT NULL, email TEXT, fulfilment TEXT NOT NULL DEFAULT 'collection',
+  address TEXT, postcode TEXT, days TEXT NOT NULL, time TEXT NOT NULL, start_date TEXT NOT NULL, weeks INTEGER NOT NULL DEFAULT 0,
+  payment_method TEXT NOT NULL DEFAULT 'cash', meal_price REAL NOT NULL, notes TEXT, status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS orders_date ON orders(date);
 CREATE INDEX IF NOT EXISTS chat_conv ON chat_log(conversation_id);
 """
@@ -98,6 +110,9 @@ COLUMNS = [
     ("expenses", "account", "TEXT"),
     ("expenses", "paid_from", "TEXT NOT NULL DEFAULT '1110'"),
     ("menu_items", "video", "TEXT"),
+    ("alerts", "notified", "INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "tiffin_id", "INTEGER"),
+    ("orders", "partner_ref", "TEXT"),
     ("menu_items", "enquiry", "INTEGER NOT NULL DEFAULT 0"),
 ]
 

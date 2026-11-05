@@ -20,6 +20,7 @@ EXPENSE_ACCOUNTS = {"Packaging": "5400", "Spices, herbs and consumables": "5300"
                     "Delivery": "6200", "Small equipment": "6300", "Marketing": "6400", "Card and platform fees": "6500",
                     "Partner commission": "6600", "Phone and internet": "6700", "Other": "6900"}
 EXPENSE_CATEGORIES = list(EXPENSE_ACCOUNTS)
+PAY_WORDS = {"cash": "cash", "bank": "bank transfer", "card": "card online", "partner": "paid through the delivery app"}
 PAID_FROM = {"1110": "Cash", "1120": "Bank", "2110": "Not paid yet (supplier owed)"}
 # Words that mark an ingredient as a spice, herb or other small item that isn't weighed out per dish. These are not
 # tracked in stock or shopping lists; buying them is a consumables expense.
@@ -276,9 +277,25 @@ def check_slot(d: str, t: str, notice_hours: int = 24, ignore_order: int | None 
         raise ShopError(f"We cook for collection or delivery between {slots[0]} and {slots[-1]}.")
     limit = int(setting("daily_order_limit") or 0)
     if limit:
-        taken = [o for o in orders_on(day.isoformat()) if o["id"] != ignore_order]
+        taken = [o for o in orders_on(day.isoformat()) if o["id"] != ignore_order and o["source"] != "tiffin"]
         if len(taken) >= limit:
             raise ShopError(f"Sorry, {pretty_date(day.isoformat())} is fully booked. Please choose another day.")
+
+
+def earliest_day(notice_hours: int = 24) -> str | None:
+    """The first day a new order can be cooked for, as 'Saturday 7 November' (None if not taking orders)."""
+    if not setting("accepting_orders"):
+        return None
+    slots = time_slots()
+    first = now() + timedelta(hours=notice_hours)
+    for add in range(0, 60):
+        day = (first + timedelta(days=add)).date()
+        if day.isoformat() in (setting("closed_dates") or []):
+            continue
+        if add == 0 and slots and first.strftime("%H:%M") > slots[-1]:
+            continue
+        return pretty_date(day.isoformat())
+    return None
 
 
 def delivery_quote(postcode: str, food_total: float = 0) -> dict:
@@ -417,33 +434,52 @@ def place_order(lines: list[dict], name: str, phone: str, fulfilment: str, d: st
 
 
 def place_partner_order(partner: str, lines: list[dict], name: str, d: str, t: str, total: float | None = None,
-                        reference: str = "", notes: str = "", phone: str = "") -> dict:
+                        reference: str = "", notes: str = "", phone: str = "", unmatched: list[str] | None = None) -> dict:
     """An order taken by Uber Eats, Deliveroo or Just Eat. The partner collects the money and pays her later, less
-    commission, so it's booked as paid to the partner. Notice and slot rules aren't applied: the partner's app has them."""
+    commission, so it's booked as owed by the partner. Notice and slot rules aren't applied: the partner's app has them.
+    Sending the same reference twice returns the first order. Lines the menu couldn't match go in `unmatched` and are kept
+    in the order's notes for her to check."""
     partners = setting("partners") or {}
     if partner not in partners:
         raise ShopError("Unknown delivery partner.")
-    qt = quote(lines, "collection" if setting("offers_collection") else "delivery", check_time=False) \
-        if setting("offers_collection") else None
-    if qt is None:
-        raise ShopError("Turn on collection so partner riders can collect.")
-    gross = round(float(total), 2) if total else qt["total"]
+    label = dict(menu_data.PARTNERS).get(partner, partner)
+    if not partners[partner].get("on"):
+        raise ShopError(f"{label} isn't switched on. Turn it on in Settings first.")
+    reference = (reference or "").strip()[:60]
+    if reference:
+        dup = q1("SELECT id FROM orders WHERE partner=? AND partner_ref=?", (partner, reference))
+        if dup:
+            o = get_order(dup["id"])
+            o["duplicate"] = True
+            return o
+    items = []
+    for ln in lines:
+        o = option(int(ln["option_id"]))
+        items.append((o["id"], o["dish"], o["label"], int(ln.get("qty") or 1), o["price"]))
+    menu_total = round(sum(i[3] * i[4] for i in items), 2)
+    gross = round(float(total), 2) if total else menu_total
+    if not gross and not unmatched:
+        raise ShopError("The order has no items and no total.")
     fee = round(gross * float(partners[partner].get("commission") or 0) / 100, 2)
     stamp = iso_now()
-    label = dict(menu_data.PARTNERS).get(partner, partner)
+    note = (f"{label} ref {reference}. " if reference else "") + (notes or "")[:300]
+    if unmatched:
+        note += " CHECK THESE ITEMS (not matched to the menu): " + "; ".join(unmatched)[:400]
     with tx() as c:
         oid = c.execute("""INSERT INTO orders(code,customer_name,phone,fulfilment,delivery_fee,food_total,total,date,time,
-                           payment_method,payment_status,paid_at,notes,source,partner,partner_fee,created_at,updated_at)
-                           VALUES(?,?,?,'collection',0,?,?,?,?,'partner','paid',?,?,?,?,?,?,?)""",
+                           payment_method,payment_status,paid_at,notes,source,partner,partner_fee,partner_ref,created_at,updated_at)
+                           VALUES(?,?,?,'collection',0,?,?,?,?,'partner','paid',?,?,'partner',?,?,?,?,?)""",
                         (secrets.token_urlsafe(9), (name or label + " customer")[:80], phone or "-", gross, gross,
-                         parse_date(d).isoformat(), parse_time(t), parse_date(d).isoformat(),
-                         (f"{label} ref {reference}. " if reference else "") + (notes or "")[:400] or None,
-                         "partner", partner, fee, stamp, stamp)).lastrowid
-        for i in qt["items"]:
+                         parse_date(d).isoformat(), parse_time(t), parse_date(d).isoformat(), note.strip() or None,
+                         partner, fee, reference or None, stamp, stamp)).lastrowid
+        for oid_, dish, portion, qty, price in items:
             c.execute("INSERT INTO order_items(order_id,option_id,dish,portion,qty,unit_price) VALUES(?,?,?,?,?,?)",
-                      (oid, i["option_id"], i["dish"], i["portion"], i["qty"], i["unit_price"]))
-    alert("order", f"New {label} order #{oid}: {money(gross)} for {pretty_date(parse_date(d).isoformat())} at {parse_time(t)}",
-          f"/owner/orders/{oid}")
+                      (oid, oid_, dish, portion, qty, price))
+        if not items:
+            c.execute("INSERT INTO order_items(order_id,option_id,dish,portion,qty,unit_price) VALUES(?,NULL,?,?,1,?)",
+                      (oid, "Items to check (see notes)", f"{label} order", gross))
+    alert("order", f"New {label} order #{oid}: {money(gross)} for {pretty_date(parse_date(d).isoformat())} at {parse_time(t)}"
+          + (" · some items need checking" if unmatched or not items else ""), f"/owner/orders/{oid}")
     return get_order(oid)
 
 
@@ -459,6 +495,8 @@ def set_status(order_id: int, status: str) -> dict:
     execute("UPDATE orders SET status=?, updated_at=? WHERE id=?", (status, iso_now(), order_id))
     if status in ("cooking", "ready", "completed") and not o["stock_used"]:
         use_stock_for_order(order_id)
+    if status == "cancelled" and o["stock_used"]:
+        return_stock_for_order(order_id)
     return get_order(order_id)
 
 
@@ -530,7 +568,12 @@ def unpaid_orders() -> list[dict]:
 # ---------------------------------------------------------------- alerts
 
 def alert(kind: str, text: str, link: str = "") -> None:
-    execute("INSERT INTO alerts(kind,text,link,created_at) VALUES(?,?,?,?)", (kind, text, link, iso_now()))
+    aid = execute("INSERT INTO alerts(kind,text,link,created_at) VALUES(?,?,?,?)", (kind, text, link, iso_now()))
+    try:
+        from . import notify
+        notify.dispatch(kind, text, aid)
+    except Exception:  # noqa: BLE001  (a failed phone alert must never break an order)
+        pass
 
 
 def alerts(limit: int = 20) -> list[dict]:
@@ -731,6 +774,18 @@ def use_stock_for_order(order_id: int) -> None:
         c.execute("UPDATE orders SET stock_used=1 WHERE id=?", (order_id,))
 
 
+def return_stock_for_order(order_id: int) -> None:
+    """A cancelled order that had already been cooked from stock: put the ingredients back (as positive 'use' moves, which the
+    books treat as a reversal)."""
+    with tx() as c:
+        for m in c.execute("SELECT * FROM stock_moves WHERE order_id=? AND kind='use' AND qty<0", (order_id,)).fetchall():
+            c.execute("UPDATE ingredients SET stock=stock+? WHERE id=?", (-m["qty"], m["ingredient_id"]))
+            c.execute("INSERT INTO stock_moves(ingredient_id,kind,qty,cost,reason,order_id,date,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                      (m["ingredient_id"], "use", -m["qty"], m["cost"], f"Order #{order_id} cancelled, stock returned", order_id,
+                       today(), iso_now()))
+        c.execute("UPDATE orders SET stock_used=0 WHERE id=?", (order_id,))
+
+
 def shopping_list(start: str, end: str) -> dict:
     """What to buy for the orders between two dates that haven't used stock yet."""
     upcoming = [o for o in list_orders(start, end, "open") if not o["stock_used"]]
@@ -796,16 +851,20 @@ def summary(start: str, end: str) -> dict:
 
 
 def period(name: str) -> tuple[str, str]:
+    """Whole calendar periods, so orders booked for later in the month already show as sales."""
     d = now().date()
     if name == "week":
-        return (d - timedelta(days=d.weekday())).isoformat(), d.isoformat()
+        mon = d - timedelta(days=d.weekday())
+        return mon.isoformat(), (mon + timedelta(days=6)).isoformat()
     if name == "last_month":
         first = d.replace(day=1)
         prev_end = first - timedelta(days=1)
         return prev_end.replace(day=1).isoformat(), prev_end.isoformat()
     if name == "year":
-        return d.replace(month=1, day=1).isoformat(), d.isoformat()
-    return d.replace(day=1).isoformat(), d.isoformat()
+        return d.replace(month=1, day=1).isoformat(), d.replace(month=12, day=31).isoformat()
+    first = d.replace(day=1)
+    nxt = (first + timedelta(days=32)).replace(day=1)
+    return first.isoformat(), (nxt - timedelta(days=1)).isoformat()
 
 
 # ---------------------------------------------------------------- calendar
@@ -824,7 +883,7 @@ def ics_feed() -> str:
         begin = datetime.combine(parse_date(o["date"]), datetime.strptime(o["time"], "%H:%M").time())
         dishes = ", ".join(f"{i['qty']} x {i['dish']} ({i['portion']})" for i in o["items"])
         desc = (f"{dishes}\nTotal {money(o['total'])} ({'paid' if o['payment_status'] == 'paid' else 'not paid yet'}, "
-                f"{'cash' if o['payment_method'] == 'cash' else 'bank transfer'})\nPhone {o['phone']}"
+                f"{PAY_WORDS.get(o['payment_method'], o['payment_method'])})\nPhone {o['phone']}"
                 + (f"\nDeliver to {o['address']} {o['postcode']}" if o["fulfilment"] == "delivery" else "")
                 + (f"\nNotes: {o['notes']}" if o["notes"] else "") + f"\n{config.BASE_URL}/owner/orders/{o['id']}")
         lines += ["BEGIN:VEVENT", f"UID:pashtoon-order-{o['id']}@pashtoonflavours", f"DTSTAMP:{stamp}",
