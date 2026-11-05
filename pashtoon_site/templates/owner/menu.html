@@ -5,14 +5,14 @@
 <p class="muted" style="max-width:720px">Change prices, take a dish off for a while, and add recipes (ingredients for one portion) so stock and shopping lists work out themselves.</p>
 {% for key, label, items in sections %}
 <h2 style="margin-top:30px">{{ label.split(' · ')[0] }}</h2>
-<div class="card scroll-x"><table class="list">
+<div class="card scroll-x"><table class="list stack-sm">
   <thead><tr><th>Dish</th><th>Portions and prices</th><th>Recipe cost</th><th></th></tr></thead>
   <tbody>{% for it in items %}
   <tr>
-    <td style="min-width:200px"><a href="/owner/menu/{{ it.id }}"><b>{{ it.name }}</b></a>{% if not it.available %} <span class="badge cancelled">off the menu</span>{% endif %}<div class="tiny faint">{{ it.notice_hours }}h notice</div></td>
-    <td class="small">{% for o in it.options %}{{ o.label }}: <b>{{ money(o.price) }}</b><br>{% endfor %}</td>
-    <td class="small">{% for o in it.options %}{% if o.has_recipe %}{{ money(o.cost) }} <span class="faint">({{ ((o.cost / o.price) * 100)|round|int }}%)</span>{% else %}<span class="faint">no recipe</span>{% endif %}<br>{% endfor %}</td>
-    <td class="right nowrap"><a class="btn small" href="/owner/menu/{{ it.id }}">Edit</a>
+    <td class="sm-head" style="min-width:200px"><a href="/owner/menu/{{ it.id }}"><b>{{ it.name }}</b></a>{% if not it.available %} <span class="badge cancelled">off the menu</span>{% endif %}<div class="tiny faint">{{ it.notice_hours }}h notice</div></td>
+    <td class="small" data-label="Prices"><div>{% for o in it.options %}{{ o.label }}: <b>{{ money(o.price) }}</b><br>{% endfor %}</div></td>
+    <td class="small" data-label="Recipe cost"><div>{% for o in it.options %}{% if o.has_recipe %}{{ money(o.cost) }} <span class="faint">({{ ((o.cost / o.price) * 100)|round|int }}%)</span>{% else %}<span class="faint">no recipe</span>{% endif %}<br>{% endfor %}</div></td>
+    <td class="right nowrap sm-acts"><a class="btn small" href="/owner/menu/{{ it.id }}">Edit</a>
       <form method="post" action="/owner/menu/{{ it.id }}/toggle" style="display:inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">{{ 'Take off' if it.available else 'Put back' }}</button></form></td>
   </tr>{% endfor %}</tbody>
 </table></div>

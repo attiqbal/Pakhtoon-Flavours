@@ -36,7 +36,7 @@ def methods() -> list[tuple[str, str]]:
 
 
 def label(method: str) -> str:
-    return {"card": "Card (online)", "cash": "Cash", "bank": "Bank transfer"}.get(method, method)
+    return {"card": "Card (online)", "cash": "Cash", "bank": "Bank transfer", "partner": "Delivery app"}.get(method, method)
 
 
 def create_checkout(o: dict) -> str:

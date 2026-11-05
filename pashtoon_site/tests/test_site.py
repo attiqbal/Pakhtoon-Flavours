@@ -603,3 +603,25 @@ def test_tiffin_enquiry_and_dish_video(client):
     db.set_setting("promo_item_id", it["id"])
     client.cookies.clear()
     assert "window.PROMO" in client.get("/").text
+
+
+def test_landing_page_and_phone_layout(client):
+    h = client.get("/").text
+    for bit in ("See the menu and order", "Watch it cooked", "Good to know", "application/ld+json", "Taking orders now", 'id="lp-sticky"'):
+        assert bit in h, bit
+    assert shop.earliest_day() and shop.earliest_day() in h
+    db.set_setting("accepting_orders", False)
+    assert shop.earliest_day() is None and "not taking new orders" in client.get("/").text
+    # the customer chat never covers the owner login; the owner app has the phone tab bar and install manifest
+    assert 'id="chat-box"' not in client.get("/owner/login").text
+    login(client)
+    o = client.get("/owner").text
+    assert 'class="tabbar"' in o and "owner.webmanifest" in o
+    assert client.get("/static/owner.webmanifest").status_code == 200
+
+
+def test_calendar_feed_names_card_payments(client):
+    o = shop.place_order([{"option_id": opt("Dam Pukh", "Per person"), "qty": 1}], "Card Person", "07700900111", "collection",
+                         day(3), "18:00", "card", by_owner=True)
+    assert "card online" in shop.ics_feed() and "bank transfer" not in shop.ics_feed()
+    assert o["payment_method"] == "card"
