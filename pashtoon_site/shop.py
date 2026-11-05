@@ -92,6 +92,13 @@ def install() -> None:
             sort = q1("SELECT COALESCE(MAX(sort),0)+1 n FROM menu_items")["n"]
             execute("INSERT INTO menu_items(slug,name,category,description,image,notice_hours,sort) VALUES(?,?,?,?,?,?,?)",
                     (slug, name, cat, desc, img, notice, sort))
+    if not get_setting("media_v1"):            # her own photos and clips replace the first crops from the printed menu
+        set_setting("media_v1", True)
+        for slug, (photo, clip) in menu_data.DISH_MEDIA.items():
+            execute("UPDATE menu_items SET image=?, video=COALESCE(video,?) WHERE slug=? AND (image IS NULL OR image NOT LIKE '/media/%')",
+                    (photo, clip, slug))
+        for kind, url, title in menu_data.LIBRARY_MEDIA:
+            execute("INSERT INTO media(kind,url,title,created_at) VALUES(?,?,?,?)", (kind, url, title, iso_now()))
     for slug in menu_data.ENQUIRY_ITEMS:
         execute("UPDATE menu_items SET enquiry=1 WHERE slug=?", (slug,))
     if not get_setting("partner_key"):

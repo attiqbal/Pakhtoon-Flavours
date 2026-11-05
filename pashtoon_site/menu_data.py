@@ -79,3 +79,9 @@ DEFAULT_SETTINGS = {
     "ai_model": "",                   # empty = CLAUDE_MODEL from .env (Opus by default, the strongest model)
     "promo_item_id": 0,               # dish whose video pops up once per visit (0 = off)
 }
+
+
+# Photos and short muted clips (from her own videos) for the dishes that have footage. Shipped in static/media.
+DISH_MEDIA = {slug: (f"/static/media/{slug}.jpg", f"/static/media/{slug}.mp4") for slug in ("dampukh", "pulao", "namkeen", "karahi", "raan")}
+# More from the same footage, offered in the media library so she or the assistant can use them.
+LIBRARY_MEDIA = [("image", "/static/media/karahi-lamb.jpg", "Peshawari karahi, lamb"), ("video", "/static/media/karahi-lamb.mp4", "Peshawari karahi, lamb")]
