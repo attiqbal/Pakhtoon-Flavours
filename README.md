@@ -28,6 +28,13 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Settings**: taking orders on/off, hours, daily limit, delivery bands, bank details, review link, banner message, AI on/off and name, password, new kitchen/calendar links.
 - **WhatsApp, Instagram and Facebook Messenger (optional)**: the same assistant answers on Meta's apps through one webhook, `/webhook/meta`, and those chats land in Messages too. Settings shows which are connected.
 
+## On a phone
+
+The whole site is built for phones first. Customers get a landing page with her cooking clips, swipeable dishes and an
+FAQ, a compact menu, and a full-screen chat. Her dashboard has a bottom tab bar (Today, Orders, Messages, Kitchen,
+More), and lists turn into cards. On her iPhone she can open `/owner` in Safari and choose Share > Add to Home Screen:
+it then opens like an app.
+
 ## Run it
 
 **GitHub Codespaces**: open the repository in a Codespace. It installs everything and runs `start.sh`, which prints the website address and her first password. The site runs on port 8000.
@@ -60,7 +67,7 @@ Each dish can have a video (Menu > dish page, or send one to the assistant): a "
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q              # 32 tests, no network or API key needed
+pytest -q              # 34 tests, no network or API key needed
 ```
 
 ## How it fits together

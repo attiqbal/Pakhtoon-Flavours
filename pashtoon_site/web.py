@@ -13,6 +13,7 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import accounts, agent, config, db, llm, menu_data, messages, meta, payments, reports, shop
@@ -22,7 +23,7 @@ log = logging.getLogger(__name__)
 HERE = os.path.dirname(__file__)
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
 templates.env.globals.update(money=shop.money, menu_categories=menu_data.CATEGORIES, statuses=shop.STATUSES, wa=shop.wa_number,
-                              pay_label=payments.label, image_url=lambda img: img if (img or '').startswith('/') else f'/static/img/{img}')
+                              pay_label=payments.label, pretty=shop.pretty_date, image_url=lambda img: img if (img or '').startswith('/') else f'/static/img/{img}')
 
 
 # ---------------------------------------------------------------- small helpers
@@ -195,8 +196,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
         items = shop.menu()
-        featured = [i for i in items if i["image"] and i["category"] in ("mains", "special")]
-        return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines())
+        featured = [i for i in items if i["image"] and i["category"] in ("mains", "special") and i["options"]]
+        return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines(),
+                      clips=[i for i in items if i["video"]], tiffin=next((i for i in items if i["category"] == "tiffin"), None),
+                      earliest=shop.earliest_day(), pay_methods=payments.methods(),
+                      from_price=min((o["price"] for i in featured for o in i["options"]), default=0))
 
     @app.get("/menu", response_class=HTMLResponse)
     def menu_page(request: Request):
@@ -220,9 +224,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def api_quote(request: Request):
         body = await request.json()
         try:
-            qt = shop.quote(_cart(json.dumps(body.get("items", []))), body.get("fulfilment") or "collection",
-                            body.get("postcode", ""), body.get("date", ""), body.get("time", ""),
-                            check_time=bool(body.get("date") and body.get("time")))
+            qt = await run_in_threadpool(shop.quote, _cart(json.dumps(body.get("items", []))), body.get("fulfilment") or "collection",
+                                         body.get("postcode", ""), body.get("date", ""), body.get("time", ""),
+                                         check_time=bool(body.get("date") and body.get("time")))
             return {"ok": True, **qt}
         except ShopError as e:
             return {"ok": False, "error": str(e)}
@@ -244,14 +248,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         try:
             if not agree:
                 raise ShopError("Please tick to confirm you've read the cancellation policy.")
-            o = shop.place_order(_cart(cart), name, phone, fulfilment, date_, time_, payment, address, postcode, email, notes)
+            o = await run_in_threadpool(shop.place_order, _cart(cart), name, phone, fulfilment, date_, time_, payment, address,
+                                        postcode, email, notes)
         except ShopError as e:
             return render(request, "public/checkout.html", error=str(e), **page)
         request.session.setdefault("my_orders", [])
         request.session["my_orders"] = (request.session["my_orders"] + [o["code"]])[-10:]
         if o["payment_method"] == "card":
             try:
-                return RedirectResponse(payments.create_checkout(o), status_code=303)
+                return RedirectResponse(await run_in_threadpool(payments.create_checkout, o), status_code=303)
             except RuntimeError:
                 log.exception("card checkout failed for order %s", o["id"])
                 return back(f"/o/{o['code']}?new=1", error="Your order is placed, but the card payment page didn't open. Press Pay now to try again.")
@@ -293,7 +298,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if not allow(f"pay:{ip(request)}", 20, 3600):
             return back(f"/o/{code}", error="Please wait a little and try again.")
         try:
-            return RedirectResponse(payments.create_checkout(o), status_code=303)
+            return RedirectResponse(await run_in_threadpool(payments.create_checkout, o), status_code=303)
         except RuntimeError:
             return back(f"/o/{code}", error="The card payment page didn't open. Please try again in a minute, or pay cash.")
 
@@ -344,7 +349,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             request.session["chat"] = conv["token"]
         if not allow(f"chat:{conv['id']}", 25, 600) or not allow(f"chatip:{ip(request)}", 60, 600):
             return {"ok": False, "error": "You're sending messages very quickly. Please wait a moment."}
-        agent.customer_message(conv, text)
+        await run_in_threadpool(agent.customer_message, conv, text)     # the AI can take a while; don't hold up other visitors
         return {"ok": True, "lines": agent.chat_lines(conv["id"], int(body.get("after") or 0))}
 
     @app.get("/api/chat/poll")
@@ -882,7 +887,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             text = (await request.json()).get("text", "")
         if attachments and not text.strip():
             text = "I've attached " + ("a file" if len(attachments) == 1 else "some files") + "."
-        return {"reply": agent.owner_chat(text, attachments), "media": media}
+        return {"reply": await run_in_threadpool(agent.owner_chat, text, attachments), "media": media}
 
     @app.get("/api/owner/history")
     def assistant_history(request: Request):

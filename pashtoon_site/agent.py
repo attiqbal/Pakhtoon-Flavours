@@ -2,6 +2,7 @@
 the business from the dashboard. It can only act through the tools below, which call the same rules as the website."""
 import json
 import logging
+import os
 import secrets
 from datetime import timedelta
 
@@ -566,7 +567,8 @@ def owner_chat(text: str, attachments: list[dict] | None = None) -> str:
     content = [{"type": "text", "text": f"[{_stamp()}] {text}"}]
     for att in attachments or []:
         content[0]["text"] += f"\n[Attached {att['kind']} saved to the media library as media id {att['id']}: {att.get('title', '')}]"
-        if att["kind"] == "image":
+        # The AI only looks at photos up to about 5 MB; bigger ones are still saved and can be used on dishes.
+        if att["kind"] == "image" and os.path.getsize(att["path"]) <= 3_700_000:
             import base64
             try:
                 data = base64.b64encode(open(att["path"], "rb").read()).decode()
