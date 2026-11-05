@@ -2,7 +2,7 @@
 {% from "owner/_macros.html" import order_row %}
 {% block title %}Today{% endblock %}
 {% block main %}
-<div class="topbar"><div><span class="eyebrow">{{ today_pretty }}</span><h1>Assalamu alaikum.<br><span class="thin">Here's your day.</span></h1></div>
+<div class="topbar"><div><span class="eyebrow">{{ today_pretty }}</span><h1>Today</h1></div>
   <div class="row"><a class="btn" href="/owner/orders/new">Add a phone order</a><a class="btn primary" href="/kitchen">Open kitchen screen</a></div></div>
 
 {% if not st.accepting_orders %}<div class="alert info">Online ordering is paused. Customers can look but not order. <a href="/owner/settings">Turn it back on</a></div>{% endif %}

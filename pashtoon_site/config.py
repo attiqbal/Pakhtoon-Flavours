@@ -56,3 +56,18 @@ def secret_key() -> str:
         return key
     except OSError:
         return secrets.token_hex(32)
+
+
+# Alerts to her phone and email. All optional.
+WHATSAPP_OWNER_TEMPLATE = _env("WHATSAPP_OWNER_TEMPLATE")           # approved utility template with one body variable
+WHATSAPP_TEMPLATE_LANG = _env("WHATSAPP_TEMPLATE_LANG", "en_GB")
+NTFY_SERVER = _env("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+SMTP_HOST = _env("SMTP_HOST")
+SMTP_PORT = int(_env("SMTP_PORT", "587") or 587)
+SMTP_USER = _env("SMTP_USER")
+SMTP_PASSWORD = _env("SMTP_PASSWORD")
+SMTP_FROM = _env("SMTP_FROM")
+# Background jobs (backups, held alerts, tiffin orders). Run one server process; tests switch this off.
+BACKGROUND = _env("PASHTOON_BACKGROUND", "1") != "0"
+BACKUP_DIR = _env("PASHTOON_BACKUP_DIR") or os.path.join(DATA_DIR, "backups")
+BACKUP_KEEP = int(_env("PASHTOON_BACKUP_KEEP", "30") or 30)

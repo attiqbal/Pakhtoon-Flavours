@@ -1,0 +1,28 @@
+# Fly.io: `fly launch --no-deploy --copy-config`, then `fly volumes create pashtoon_data --size 1`,
+# `fly secrets set OWNER_PASSWORD=... SESSION_SECRET=... ANTHROPIC_API_KEY=...` and `fly deploy`.
+app = "pashtoon-flavours"
+primary_region = "lhr"
+
+[build]
+
+[env]
+  PASHTOON_DATA_DIR = "/data"
+  PASHTOON_BASE_URL = "https://pashtoon-flavours.fly.dev"
+
+[mounts]
+  source = "pashtoon_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"      # the background jobs need it running
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"

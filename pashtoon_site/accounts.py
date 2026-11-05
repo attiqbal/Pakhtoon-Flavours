@@ -124,7 +124,9 @@ def journals(start: str | None = None, end: str | None = None) -> list[dict]:
             src = m["reason"] if m["reason"] in ("1110", "1120", "2110") else "1110"
             out.append(_j(m["date"], f"Stock {m['id']}", f"Bought {m['name']}", [("1160", cost, 0), (src, 0, cost)], "purchase"))
         elif m["kind"] == "use":
-            out.append(_j(m["date"], m["reason"] or "Cooking", f"Used {m['name']}", [("5100", cost, 0), ("1160", 0, cost)], "stock"))
+            back = (m["qty"] or 0) > 0       # stock returned after a cancelled order
+            out.append(_j(m["date"], m["reason"] or "Cooking", f"{'Returned' if back else 'Used'} {m['name']}",
+                          [("1160", cost, 0), ("5100", 0, cost)] if back else [("5100", cost, 0), ("1160", 0, cost)], "stock"))
         elif m["kind"] == "writeoff":
             out.append(_j(m["date"], f"Stock {m['id']}", f"Wrote off {m['name']}: {m['reason']}",
                           [("5200", cost, 0), ("1160", 0, cost)], "stock"))

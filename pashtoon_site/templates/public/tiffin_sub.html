@@ -1,0 +1,23 @@
+{% extends "public/_base.html" %}
+{% block title %}Your tiffin · {{ st.shop_name }}{% endblock %}
+{% block page %}
+<div class="wrap" style="padding-top:40px;padding-bottom:80px;max-width:900px">
+  {% set msg = request.query_params.get('msg') %}{% set err = request.query_params.get('error') %}
+  {% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}{% if err %}<div class="alert error">{{ err }}</div>{% endif %}
+  <span class="eyebrow">Tiffin plan</span>
+  <h1>{% if new %}You're signed up,<br><span class="thin">{{ sub.customer_name.split()[0] }}!</span>{% else %}Your tiffin{% endif %}</h1>
+  <p class="muted">Keep this page: it lists your meals. Each meal is its own order that we cook fresh.</p>
+  <div class="grid two" style="align-items:start;margin-top:24px">
+    <div class="card"><div class="row between"><h2 style="margin:0">{{ sub.plan_name }}</h2><span class="badge {{ 'completed' if sub.status == 'active' else 'cancelled' }}">{{ sub.status }}</span></div>
+      <p class="muted" style="margin-top:8px">{{ sub.day_names }} at {{ sub.time }} · from {{ sub.start_date }} · {{ 'until you cancel' if not sub.weeks else (sub.weeks ~ ' weeks') }}</p>
+      <div class="summary-line"><span>Each meal</span><span>{{ money(sub.meal_price) }}</span></div>
+      <div class="summary-line total"><span>Each week</span><span>{{ money(sub.week_total) }}</span></div>
+      <p class="small muted" style="margin-top:12px">Pay weekly by {{ 'bank transfer' if sub.payment_method == 'bank' else 'cash' }}. {{ sub.fulfilment|capitalize }}{% if sub.fulfilment == 'collection' %} from {{ st.kitchen_postcode }}{% endif %}.</p>
+      {% if sub.status == 'active' %}<form method="post" action="/tiffin/{{ sub.code }}/cancel" onsubmit="return confirm('Cancel your tiffin plan? Meals less than 24 hours away will still be cooked.')" style="margin-top:14px"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small danger">Cancel my plan</button></form>{% endif %}
+    </div>
+    <div class="card"><h2>Coming up</h2>
+      {% for m in meals if m.status != 'cancelled' %}<div class="summary-line"><span>{{ m.date }} · {{ m.time }}</span><span><a href="/o/{{ m.code }}">{{ m.status }}</a> · {{ 'paid' if m.payment_status == 'paid' else 'unpaid' }}</span></div>{% else %}<p class="muted">No meals scheduled.</p>{% endfor %}
+      <p class="small muted" style="margin-top:12px">Need to skip a day? Open that meal and cancel it (24 hours' notice), or chat with us.</p></div>
+  </div>
+</div>
+{% endblock %}

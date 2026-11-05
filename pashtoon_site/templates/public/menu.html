@@ -19,7 +19,7 @@
           {% if it.video %}<button type="button" class="watch" data-video="{{ it.video }}" data-title="{{ it.name }}" aria-label="Watch {{ it.name }}">▶ Watch</button>{% endif %}</div>
         <div class="body">
           <h3>{{ it.name }}</h3><p>{{ it.description }}</p>
-          {% if it.enquiry %}<button type="button" class="btn primary" data-ask="{{ it.name }}">Ask about {{ it.name|lower }}</button>{% endif %}
+          {% if it.enquiry %}{% if it.slug == 'tiffin' and tiffin_plans %}<a class="btn primary" href="/tiffin">See plans and sign up</a> {% endif %}<button type="button" class="btn" data-ask="{{ it.name }}">Ask about {{ it.name|lower }}</button>{% endif %}
           <div class="opts">
             {% for o in it.options %}
             <div class="opt" data-option="{{ o.id }}" data-name="{{ it.name }}" data-portion="{{ o.label }}" data-price="{{ o.price }}">

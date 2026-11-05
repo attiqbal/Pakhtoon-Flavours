@@ -59,6 +59,16 @@ Collection only is the default. Delivery by her is one tick in Settings. Uber Ea
 
 Claude Opus 5.5 by default. In Settings (or `.env`) pick Claude or ChatGPT (`AI_PROVIDER=openai`, `OPENAI_API_KEY`), and any model name. Any OpenAI-compatible service works by setting `OPENAI_BASE_URL`. The assistant's playbooks are plain markdown files in `pashtoon_site/skills/` (customer service, menu editing, bookkeeping, stock). Edit or add one to teach it something.
 
+## Alerts, tiffin, backups
+
+- **Alerts when the dashboard is closed** (Settings > Alerts to your phone): WhatsApp to her personal number, the free ntfy app, or email; she picks channels and which alerts (orders, customer needs you, messages, cancellations, payments), plus quiet hours with one summary afterwards. Send a test from Settings.
+- **Tiffin** (Owner > Tiffin, public page `/tiffin`): plans with a weekly price; customers pick days, time, start date and length; each meal becomes an order on the kitchen screen, topped up daily. Paid weekly in cash or by transfer. The assistant can add and change plans and pause or cancel subscribers.
+- **Delivery app orders**: switch each app on in Settings; forward its order emails to the email intake URL shown there (best effort, unmatched items are flagged), or post JSON to `/api/partner-orders`.
+- **Backups**: daily to `/data/backups` (newest 30), download from Settings, optional weekly email. `GET /healthz` for host health checks.
+
+### Not tested with real accounts
+WhatsApp alerts and templates, SMTP email, the ntfy server, and the delivery-app email parser (checked against sample text I wrote, not real Uber Eats, Deliveroo or Just Eat emails) have only been tested with mocks.
+
 ## Dish videos
 
 Each dish can have a video (Menu > dish page, or send one to the assistant): a "Watch" button on the menu card, and one dish can pop up as an ad once per visit (Settings > AI assistant > popup).
@@ -116,7 +126,7 @@ No card details ever reach this site.
 
 ## Going live later
 
-The `Dockerfile` runs the site with its data in `/data`. Any host that runs a container with a small disk works (Railway, Fly.io, a VPS). Set `PASHTOON_BASE_URL` to the real address, `SESSION_SECRET` to a long random string, `OWNER_PASSWORD`, and `ANTHROPIC_API_KEY`. Keys only ever go in `.env` or the host's settings, never in the code or a chat: `.env` is ignored by git.
+See **DEPLOY.md** (Docker with automatic HTTPS, Fly.io or Railway, health check, backups and restore). In short: the `Dockerfile` runs the site with its data in `/data`. Any host that runs a container with a small disk works (Railway, Fly.io, a VPS). Set `PASHTOON_BASE_URL` to the real address, `SESSION_SECRET` to a long random string, `OWNER_PASSWORD`, and `ANTHROPIC_API_KEY`. Keys only ever go in `.env` or the host's settings, never in the code or a chat: `.env` is ignored by git.
 
 ## Still needed from her
 
