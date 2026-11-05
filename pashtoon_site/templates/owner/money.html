@@ -1,0 +1,38 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Money{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">{{ m.start }} to {{ m.end }}</span><h1>Money</h1></div>
+  <div class="row">{% for k, label in [('week','This week'),('month','This month'),('last_month','Last month'),('year','This year')] %}<a class="btn small {% if period == k %}dark{% endif %}" href="?period={{ k }}">{{ label }}</a>{% endfor %}</div></div>
+<div class="grid four" style="margin-bottom:20px">
+  <div class="card stat"><div class="label">Sales</div><div class="value">{{ money(m.sales) }}</div><div class="small faint">{{ m.orders }} orders</div></div>
+  <div class="card stat"><div class="label">Still unpaid</div><div class="value">{{ money(m.unpaid) }}</div></div>
+  <div class="card stat"><div class="label">Spent</div><div class="value">{{ money(m.purchases + m.other) }}</div></div>
+  <div class="card stat sage"><div class="label">Profit</div><div class="value">{{ money(m.profit) }}</div></div>
+</div>
+<div class="grid two" style="align-items:start">
+  <div class="card">
+    <h2>Profit and loss</h2>
+    <div class="summary-line"><span>Food sales</span><span>{{ money(m.sales - m.delivery) }}</span></div>
+    <div class="summary-line"><span>Delivery charges</span><span>{{ money(m.delivery) }}</span></div>
+    <div class="summary-line total"><span>Takings</span><span>{{ money(m.sales) }}</span></div>
+    <div class="summary-line" style="margin-top:10px"><span>Ingredients bought</span><span>−{{ money(m.purchases) }}</span></div>
+    {% for c in m.by_category %}<div class="summary-line"><span>{{ c.category }}</span><span>−{{ money(c.total) }}</span></div>{% endfor %}
+    <div class="summary-line total"><span>Profit</span><span>{{ money(m.profit) }}</span></div>
+    <p class="small muted" style="margin-top:12px">Food written off in this period: {{ money(m.waste) }} (already counted in ingredients bought).</p>
+    {% if m.dishes %}<h2 style="margin-top:22px">Best sellers</h2>{% for d in m.dishes %}<div class="summary-line"><span>{{ d.dish }} <span class="faint small">× {{ d.qty }}</span></span><span>{{ money(d.total) }}</span></div>{% endfor %}{% endif %}
+  </div>
+  <div class="stack">
+    <form method="post" action="/owner/money/expense" class="card sand"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <h2>Add spending</h2><p class="small muted">Packaging, gas, fees, spices and herbs, and anything that isn't measured ingredients. Meat, rice and the like go on the Stock page.</p>
+      <div class="grid two" style="gap:10px"><div class="field"><label>Date</label><input type="date" name="date" value="{{ today }}"></div>
+        <div class="field"><label>Amount £</label><input name="amount" inputmode="decimal" required></div></div>
+      <div class="field"><label>Category</label><select name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><label>What for</label><input name="description" required placeholder="Foil trays from Costco"></div>
+      <div class="field"><label>Paid</label><select name="paid_from">{% for k, v in paid_from.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+      <button class="btn primary block">Add</button>
+    </form>
+    <div class="card"><h2>Spending in this period</h2>
+      {% for e in expenses %}<div class="summary-line small"><span>{{ e.date }} · {{ e.description }} <span class="faint">({{ e.category }})</span></span><span>{{ money(e.amount) }}</span></div>{% else %}<p class="muted">Nothing logged.</p>{% endfor %}</div>
+  </div>
+</div>
+{% endblock %}

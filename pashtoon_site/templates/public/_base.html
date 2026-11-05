@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ st.shop_name }}{% endblock %}</title>
+<meta name="description" content="{{ st.tagline }}. Pre-order online for collection from {{ st.kitchen_postcode }}{% if st.offers_delivery %} or delivery{% endif %}.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,200;1,9..144,300&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=1">
+<script>window.CSRF = "{{ csrf }}";</script>
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+{% if st.announcement %}<div class="announce">{{ st.announcement }}</div>{% endif %}
+<nav class="nav"><div class="nav-in">
+  <div class="nav-links"><a href="/menu">Menu</a><a href="/#how">How it works</a><a href="/#delivery">Delivery</a></div>
+  <a class="logo" href="/"><span class="the">The</span><b>Pashtoon Flavours</b></a>
+  <div class="nav-right">
+    {% if owner %}<a class="btn small" href="/owner">Dashboard</a>{% endif %}
+    <a class="btn small" href="/checkout" id="nav-basket">Basket <span class="cart-count" data-cart-count>0</span></a>
+    <a class="btn small primary" href="/menu">Order</a>
+  </div>
+</div></nav>
+{% block page %}{% endblock %}
+<footer class="foot"><div class="wrap">
+  <div class="foot-in">
+    <div><div class="big">Pre-order.<br><span class="thin">Then eat well.</span></div>
+      <p class="small" style="margin-top:18px;opacity:.85">{{ st.tagline }}. {{ st.area }}.</p></div>
+    <div><b>Order</b><a href="/menu">Menu</a><a href="/checkout">Basket</a><a href="https://wa.me/{{ wa(st.whatsapp) }}">WhatsApp {{ st.whatsapp }}</a></div>
+    <div><b>Follow</b><a href="https://instagram.com/{{ st.instagram }}">Instagram @{{ st.instagram }}</a><a href="https://tiktok.com/@{{ st.tiktok }}">TikTok @{{ st.tiktok }}</a><a href="/privacy">Privacy</a><a href="/owner/login">Owner login</a></div>
+  </div>
+  <div class="base">© {{ st.shop_name }} · Collection {{ st.kitchen_postcode }}{% if st.offers_delivery %} or delivery{% endif %} · Pre-orders only, 24 hours' notice (48 for Raan Pulao)</div>
+</div></footer>
+
+{% if owner %}{% include 'owner/_assistant_widget.html' %}{% else %}
+<button class="btn dark chat-fab" id="chat-open" type="button">Chat with us</button>
+<div class="chat-box hide" id="chat-box" role="dialog" aria-label="Chat">
+  <div class="chat-head"><div><b>{{ st.shop_name }}</b><div class="tiny">You're chatting with {{ st.assistant_name }}, our AI assistant. The owner reads every chat and can step in.</div></div>
+    <button type="button" id="chat-close" aria-label="Close chat">×</button></div>
+  <div class="chat-log" id="chat-log"><div class="bubble ai"><span class="who">{{ st.assistant_name }} · AI assistant</span>Hello 😊 I'm {{ st.assistant_name }}, the AI assistant for {{ st.shop_name }}. Ask me about the menu, delivery or your order, or I can take your order here.</div></div>
+  <form class="chat-form" id="chat-form"><input id="chat-input" placeholder="Type a message…" autocomplete="off" maxlength="1500" aria-label="Message"><button class="btn primary small" type="submit">Send</button></form>
+</div>
+{% endif %}
+<div class="vmodal hide" id="vmodal" role="dialog" aria-label="Video"><div class="vbox"><button type="button" id="vclose" aria-label="Close video">×</button>
+  <video id="vplayer" playsinline controls preload="none"></video>
+  <div class="vcta"><b id="vtitle"></b><a class="btn primary" id="vorder" href="/menu">Order now</a></div></div></div>
+{% if promo and not owner %}<script>window.PROMO = {{ {"video": promo.video, "title": promo.name, "link": "/menu#" ~ promo.slug}|tojson }};</script>{% endif %}
+<script>window.ASSISTANT = {{ st.assistant_name|tojson }};</script>
+<script src="/static/site.js?v=1"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

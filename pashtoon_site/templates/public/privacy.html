@@ -1,0 +1,18 @@
+{% extends "public/_base.html" %}
+{% block title %}Privacy · {{ st.shop_name }}{% endblock %}
+{% block page %}
+<div class="wrap" style="padding:50px 20px 80px;max-width:800px">
+  <span class="eyebrow">Privacy</span><h1>Your information</h1>
+  <p class="muted">{{ st.shop_name }} is a small home kitchen in {{ st.area }}. This page explains what we keep when you order or message us, and why.</p>
+  <h3>What we keep</h3>
+  <p>Your name, mobile number, email (if you give it), delivery address, your orders and any notes, and the messages you send us on this website, WhatsApp, Instagram or Facebook Messenger.</p>
+  <h3>Why</h3>
+  <p>Only to cook, deliver and confirm your orders, answer your questions, and contact you about your order. We don't sell your information or use it for advertising.</p>
+  <h3>Who helps us</h3>
+  <p>Messages are answered by an AI assistant, provided by Anthropic, which reads your message to reply. The owner reads the chats too and can step in. If you pay by card, Stripe handles the payment; we never see your card details. Messages on WhatsApp, Instagram and Messenger also pass through Meta. Delivery distance is worked out from your postcode with postcodes.io.</p>
+  <h3>How long</h3>
+  <p>We keep order records for as long as we need them for our accounts (usually six years in the UK) and chats for up to a year.</p>
+  <h3>Your rights and deleting your data</h3>
+  <p>You can ask us for a copy of your information, or ask us to correct or delete it, by messaging us on WhatsApp {{ st.whatsapp }} or in the chat on this website. If you used Facebook or Instagram to message us and want those messages deleted, send us the same request there. We'll do it within 30 days.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Assistant{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">{{ st.assistant_name }} · your AI assistant</span><h1>Ask me<br><span class="thin">to do the admin.</span></h1></div></div>
+{% if not ai_on %}<div class="alert info">The assistant isn't connected yet: add ANTHROPIC_API_KEY (Claude) or OPENAI_API_KEY (ChatGPT) to the .env file and restart. Every other page works without it.</div>{% endif %}
+<div class="grid two" style="align-items:start">
+  <div class="convo card" style="padding:0;display:flex;flex-direction:column;min-height:520px">
+    <div class="chat-log" id="log" style="max-height:60vh">
+      <div class="bubble ai"><span class="who">{{ st.assistant_name }} (AI)</span>Hello! Tell me what you need, like "what's on tomorrow?", "Painda per person is now £14", "close next Friday", "I bought 5kg lamb for £45" or "write off 1kg chicken, it went off".</div>
+      {% for m in history %}<div class="bubble {{ 'me' if m.role == 'user' else 'ai' }}">{% if m.role != 'user' %}<span class="who">{{ st.assistant_name }} (AI)</span>{% endif %}{{ m.text }}</div>{% endfor %}
+    </div>
+    <div class="tiny" id="files" style="padding:0 16px"></div>
+    <form class="chat-form" id="f"><label class="btn small" title="Attach photos or videos" style="cursor:pointer;margin:0">+<input type="file" id="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" hidden></label><input id="t" placeholder="Ask or tell me something…" autocomplete="off" aria-label="Message"><button class="btn primary small">Send</button></form>
+  </div>
+  <div class="card sage"><h2>What I can do</h2>
+    <p class="small">Orders: list them, change their status, mark payments.<br>Menu: add dishes, change prices, descriptions and sections, take dishes off, set photos and videos (send me a file with the + button).<br>Recipes: set the ingredients for any portion.<br>Stock: record purchases, write off waste, show stock and shopping lists.<br>Money: add spending, profit and loss, balance sheet, cash flow, tax estimate.<br>Customers: read chats and reply for you; save facts (like tiffin plans) that customers are told.</p>
+    <p class="small muted">I confirm before cancelling orders or writing things off, and tell you exactly what I changed.</p></div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+(function () {
+  const log = document.getElementById("log"), t = document.getElementById("t");
+  log.scrollTop = log.scrollHeight;
+  document.getElementById("file").addEventListener("change", (e) => { document.getElementById("files").textContent = e.target.files.length ? e.target.files.length + " file(s) attached" : ""; });
+  const add = (cls, text) => { const d = document.createElement("div"); d.className = "bubble " + cls; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault(); const text = t.value.trim(), fi = document.getElementById("file"), files = Array.from(fi.files);
+    if (!text && !files.length) return; t.value = ""; add("me", text + (files.length ? "  📎 " + files.map((f) => f.name).join(", ") : ""));
+    const wait = add("ai", "…");
+    const fd = new FormData(); fd.append("text", text); files.forEach((f) => fd.append("files", f)); fi.value = ""; document.getElementById("files").textContent = "";
+    try { const r = await fetch("/api/owner/chat", { method: "POST", headers: { "X-CSRF": window.CSRF }, body: fd });
+      const j = await r.json(); wait.textContent = j.reply || j.error || "Sorry, something went wrong."; } catch (err) { wait.textContent = "Couldn't reach the server."; }
+  });
+})();
+</script>{% endblock %}

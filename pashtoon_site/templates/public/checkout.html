@@ -1,0 +1,63 @@
+{% extends "public/_base.html" %}
+{% block title %}Checkout · {{ st.shop_name }}{% endblock %}
+{% set f = form or {} %}
+{% block page %}
+<div class="wrap" style="padding-top:40px;padding-bottom:80px">
+  <span class="eyebrow">Checkout</span><h1>Your order</h1>
+  {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+  <div id="empty" class="card sage hide"><h2>Your basket is empty</h2><p>Add some dishes from the menu first.</p><a class="btn primary" href="/menu">See the menu</a></div>
+  <form method="post" action="/checkout" id="checkout" class="grid two" style="align-items:start">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="cart" id="cart-field">
+    <div class="stack">
+      <div class="card">
+        <h2>When</h2>
+        <div class="grid two" style="gap:12px">
+          <div class="field"><label for="date">Date</label><input type="date" id="date" name="date" min="{{ min_date }}" max="{{ max_date }}" value="{{ f.date or '' }}" required></div>
+          <div class="field"><label for="time">Time</label><select id="time" name="time" required><option value="">Choose a time</option>{% for s in slots %}<option {% if f.time == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+        </div>
+        <p class="hint">Pre-orders need at least 24 hours' notice (48 hours for Raan Pulao).</p>
+      </div>
+      <div class="card">
+        <h2>Collection or delivery</h2>
+        <div class="choice" style="margin-bottom:14px">
+          {% if st.offers_collection %}<label><input type="radio" name="fulfilment" value="collection" {% if f.fulfilment != 'delivery' %}checked{% endif %}><span>Collection</span></label>{% endif %}
+          {% if st.offers_delivery %}<label><input type="radio" name="fulfilment" value="delivery" {% if f.fulfilment == 'delivery' or not st.offers_collection %}checked{% endif %}><span>Delivery</span></label>{% endif %}
+        </div>
+        <p class="small muted" id="collect-note">Collect from {{ st.kitchen_postcode }}. We'll send the exact address with your confirmation.</p>
+        <div id="delivery-fields" class="hide">
+          <div class="field"><label for="address">Address</label><textarea id="address" name="address" rows="2" placeholder="House number and street, town">{{ f.address or '' }}</textarea></div>
+          <div class="field"><label for="postcode">Postcode</label><input id="postcode" name="postcode" value="{{ f.postcode or '' }}" autocomplete="postal-code" style="max-width:200px"></div>
+          <div class="small muted">{% for b in bands %}{{ b }}<br>{% endfor %}</div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Your details</h2>
+        <div class="field"><label for="name">Name</label><input id="name" name="name" value="{{ f.name or '' }}" autocomplete="name" required></div>
+        <div class="field"><label for="phone">Mobile number</label><input type="tel" id="phone" name="phone" value="{{ f.phone or '' }}" autocomplete="tel" required><div class="hint">We'll message you on WhatsApp about your order.</div></div>
+        <div class="field"><label for="email">Email <span class="faint">(optional)</span></label><input type="email" id="email" name="email" value="{{ f.email or '' }}" autocomplete="email"></div>
+        <div class="field"><label for="notes">Anything we should know? <span class="faint">(optional)</span></label><textarea id="notes" name="notes" rows="2" maxlength="500" placeholder="Spice level, allergies, gate code…">{{ f.notes or '' }}</textarea></div>
+      </div>
+    </div>
+    <div class="stack" style="position:sticky;top:90px">
+      <div class="card">
+        <h2>Basket</h2>
+        <div id="lines"></div>
+        <div class="summary-line"><span>Food</span><span id="food">£0.00</span></div>
+        <div class="summary-line"><span>Delivery</span><span id="fee">£0.00</span></div>
+        <div class="summary-line total"><span>Total</span><span id="total">£0.00</span></div>
+        <div id="quote-error" class="alert error hide" style="margin:14px 0 0"></div>
+      </div>
+      <div class="card">
+        <h2>Payment</h2>
+        <div class="choice" style="margin-bottom:10px">
+          {% for m, lbl in pay_methods %}<label><input type="radio" name="payment" value="{{ m }}" {% if f.payment == m or (not f.payment and loop.first) %}checked{% endif %}><span>{{ lbl }}</span></label>{% endfor %}
+        </div>
+        <p class="small muted">{% if pay_methods|selectattr(0, 'equalto', 'card')|list %}Card payments open Stripe's secure page, where Apple Pay and Google Pay work too. {% endif %}{% if pay_methods|selectattr(0, 'equalto', 'cash')|list %}Cash is paid when you collect or when we deliver.{% endif %}</p>
+        <label class="check"><input type="checkbox" name="agree" value="1" required><span class="small">I understand cancellations need at least 24 hours' notice, and late cancellations may not get a full refund.</span></label>
+        <button class="btn primary big block" type="submit" style="margin-top:18px" {% if not st.accepting_orders %}disabled{% endif %}>Place order</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script>PF.checkout();</script>{% endblock %}

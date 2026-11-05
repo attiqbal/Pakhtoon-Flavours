@@ -1,0 +1,6 @@
+{% macro order_row(o) -%}
+<a class="ticket-mini" href="/owner/orders/{{ o.id }}">
+  <div><b>{{ o.time }}</b> · #{{ o.id }} {{ o.customer_name }}<div class="small muted">{% for i in o['items'] %}{{ i.qty }}× {{ i.dish }}{% if not loop.last %}, {% endif %}{% endfor %}</div></div>
+  <div class="right"><div>{{ money(o.total) }}</div><span class="badge {{ o.status }}">{{ o.status }}</span> {% if o.payment_status != 'paid' %}<span class="badge {{ o.payment_status }}">{{ o.payment_status }}</span>{% endif %}<div class="tiny faint">{{ o.fulfilment }}</div></div>
+</a>
+{%- endmacro %}
