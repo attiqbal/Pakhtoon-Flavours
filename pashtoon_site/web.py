@@ -176,7 +176,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db.set_setting("owner_password_hash", bcrypt.hashpw(config.OWNER_PASSWORD.encode(), bcrypt.gensalt()).decode())
 
     tasks.start()
-    app = FastAPI(title="The Pashtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Pakhtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), session_cookie="pf_session", same_site="lax",
                        https_only=config.BASE_URL.startswith("https"), max_age=60 * 60 * 24 * 30)
     app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
@@ -1162,7 +1162,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         s_, e_ = _range(period, start, end)
         data = reports.excel(kind, s_, e_) if fmt == "xlsx" else reports.pdf(kind, s_, e_)
         mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if fmt == "xlsx" else "application/pdf"
-        fname = f"pashtoon-flavours-{'accounts' if kind == 'all' else kind}-{e_}.{fmt}"
+        fname = f"pakhtoon-flavours-{'accounts' if kind == 'all' else kind}-{e_}.{fmt}"
         return Response(data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
     return app
