@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts The Pashtoon Flavours website on port 8000 (Codespaces or your own computer). Safe to run again any time.
+# Starts Pakhtoon Flavours website on port 8000 (Codespaces or your own computer). Safe to run again any time.
 cd "$(dirname "$0")"
 PORT="${PORT:-8000}"
 if [ -n "$CODESPACE_NAME" ]; then
@@ -26,7 +26,7 @@ nohup python -m uvicorn pashtoon_site.asgi:app --host 0.0.0.0 --port "$PORT" --p
 sleep 2
 
 echo
-echo "The Pashtoon Flavours is running at: $PASHTOON_BASE_URL     (log: data/site.log)"
+echo "Pakhtoon Flavours is running at: $PASHTOON_BASE_URL     (log: data/site.log)"
 echo "Owner dashboard:  $PASHTOON_BASE_URL/owner"
 echo "Owner password:   $(value OWNER_PASSWORD)   (first start only; change it in Settings)"
 if [ -z "$(value ANTHROPIC_API_KEY)" ]; then

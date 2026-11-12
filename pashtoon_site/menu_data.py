@@ -3,39 +3,51 @@ start, into an empty database; after that she edits it in the dashboard. No samp
 
 MENU = [
     # slug, name, category, description, image, notice hours, [(option, price)]
+    # Source of truth: her flyer of 12 Nov 2026. Kheer is not on the flyer, so it keeps its earlier price.
     ("dampukh", "Dam Pukh", "mains",
-     "Traditional South Pukhtunkhwa dish: meat slow-cooked in a sealed pot with onions, potatoes, tomatoes and chilli, served with nan.",
-     "dampukh.jpg", 24, [("Per person", 15), ("Family portion (1kg)", 40)]),
+     "Traditional South Pukhtunkhwa dish: meat slow-cooked in a sealed container with onions, potatoes, tomatoes and chilli, served with nan bread.",
+     "dampukh.jpg", 24, [("Family portion (1kg)", 40)]),
     ("painda", "Painda (Sohbat)", "mains",
-     "Slow-cooked chicken in a rich, spiced shorba, served over thin chapati.",
-     "painda.jpg", 24, [("Per person (1 chapati, 2 chicken pieces)", 12), ("Family portion (5 chapati, 10 chicken pieces)", 35)]),
+     "Traditional South Pukhtunkhwa dish: rice gravy/broth (shorba) made with slow-cooked chicken blended in spices, served over thin chapati (nan bread).",
+     "painda.jpg", 24, [("Family portion (4 chapati, 8 chicken pieces)", 40)]),
     ("pulao", "Bannu Beef Pulao", "mains",
-     "Pulao rice with a deep infusion of slow-cooked bone-in beef and the aroma of whole spices.",
-     "pulao.jpg", 24, [("Per person", 12), ("Family portion (serves 5)", 35)]),
+     "Traditional South Pukhtunkhwa pulao rice made with a deep infusion of slow-cooked bone-in beef and the aroma of spices.",
+     "pulao.jpg", 24, [("Family portion", 35)]),
     ("namkeen", "Namkeen Gosht", "mains",
-     "A timeless Pashtun favourite: lamb on the bone, slow-simmered with nothing more than salt and delicate spice. Inspired by the Namak Mandi of Peshawar.",
-     "namkeen.jpg", 24, [("Half kg lamb", 22), ("1kg lamb", 40)]),
+     "A timeless Pashtun favourite: lamb on the bone, slow-simmered and seasoned with nothing more than salt and delicate spice, letting the natural richness speak for itself. Inspired by the legendary Namak Mandi of Peshawar.",
+     "namkeen.jpg", 24, [("Half kg lamb", 24), ("1kg lamb", 40)]),
     ("kebab", "Peshawari Kebab", "mains",
-     "Homemade Peshawari kebabs with rich spices, served with mint chutney.",
-     "kebab.jpg", 24, [("4 chicken kebabs", 12), ("4 lamb kebabs", 12)]),
+     "Homemade traditional Peshawari kebabs with a choice of chicken or lamb, made with rich spices and served with mint chutney. Four kebabs.",
+     "kebab.jpg", 24, [("4 chicken kebabs", 15), ("4 lamb kebabs", 15)]),
     ("karahi", "Peshawari Karahi", "mains",
-     "Signature Shinwari karahi cooked with tomatoes, green chilli and black pepper, served with nan.",
-     "karahi.jpg", 24, [("Chicken, per portion", 12), ("Chicken, 1kg", 18), ("Lamb, per portion", 15), ("Lamb, 1kg", 32)]),
+     "Signature Peshawari Shinwari karahi cooked with tomatoes, green chilli and black pepper, served with nan bread.",
+     "karahi.jpg", 24, [("Chicken (1 full)", 26), ("Lamb (1kg)", 40)]),
     ("raan", "Peshawari Raan Pulao", "special",
-     "Succulent whole lamb leg slow-cooked with spices and layered on steaming pulao rice. A feast inspired by Peshawar's culinary heritage. Serves 6 to 8 adults.",
-     "raan.jpg", 48, [("Whole leg, serves 6 to 8", 110)]),
-    ("malai", "Chicken Malai Boti", "also", "Creamy, mildly spiced chicken boti.", None, 24, [("Portion", 12)]),
-    ("tikka", "Chicken Tikka", "also", "Chargrilled spiced chicken tikka.", None, 24, [("Portion", 12)]),
-    ("nan", "Nan", "extras", "Fresh nan bread.", None, 24, [("Each", 2)]),
-    ("chutney", "Fresh Chutney", "extras", "Homemade mint chutney.", None, 24, [("Pot", 1)]),
-    ("salad", "Fresh Salad", "extras", "Fresh salad.", None, 24, [("Portion", 1)]),
+     "Succulent whole lamb leg slow-cooked with spices and layered on steaming pulao rice. Inspired by Peshawar's rich culinary heritage, this special feast embodies tradition, depth of flavour and unforgettable hospitality. Serves 8 to 10 adults.",
+     "raan.jpg", 48, [("Whole leg, serves 8 to 10", 120)]),
+    ("malai", "Chicken Malai Boti", "also", "Creamy, mildly spiced chicken boti.", None, 24, [("Portion", 14)]),
+    ("tikka", "Chicken Tikka", "also", "Chargrilled spiced chicken tikka.", None, 24, [("Portion", 14)]),
+    ("nan", "Tandoori Nan", "extras", "Fresh tandoori nan bread.", None, 24, [("Each", 3)]),
+    ("chutney", "Fresh Chutney", "extras", "Homemade mint chutney.", None, 24, [("Pot", 2)]),
+    ("salad", "Fresh Salad", "extras", "Fresh salad.", None, 24, [("Portion", 2)]),
     ("kheer", "Kheer", "dessert",
      "Creamy rice pudding inspired by the timeless flavours of Peshawar's Qissa Khwani Bazaar.",
      "kheer.jpg", 24, [("Per serving", 7.5)]),
     ("tiffin", "Tiffin Service", "tiffin",
-     "Home-cooked meals delivered to your routine. Ask us about plans, days and prices.",
+     "Weekly tiffin service available. Home-cooked meals delivered to your routine. Ask us about plans, days and prices.",
      None, 24, []),
 ]
+
+# For sites that already hold the earlier menu: which old portion each new portion continues, so its recipe,
+# stock links and order history stay attached. Any old portion not listed here is switched off (kept for history).
+MENU_V2_FROM = {
+    ("pulao", "Family portion"): "Family portion (serves 5)",
+    ("painda", "Family portion (4 chapati, 8 chicken pieces)"): "Family portion (5 chapati, 10 chicken pieces)",
+    ("dampukh", "Family portion (1kg)"): "Family portion (1kg)",
+    ("karahi", "Chicken (1 full)"): "Chicken, 1kg",
+    ("karahi", "Lamb (1kg)"): "Lamb, 1kg",
+    ("raan", "Whole leg, serves 8 to 10"): "Whole leg, serves 6 to 8",
+}
 
 # Dishes customers ask about rather than add to the basket (details come later from her, through the assistant).
 ENQUIRY_ITEMS = {"tiffin"}
@@ -47,7 +59,7 @@ CATEGORIES = [("mains", "Mains"), ("special", "Special order · 48 hours' notice
 PARTNERS = [("ubereats", "Uber Eats"), ("deliveroo", "Deliveroo"), ("justeat", "Just Eat")]
 
 DEFAULT_SETTINGS = {
-    "shop_name": "The Pashtoon Flavours",
+    "shop_name": "Pakhtoon Flavours",
     "tagline": "Traditional Khyber Pukhtunkhwa cuisine, home-cooked to order",
     "kitchen_postcode": "OL7 9TG",
     "area": "Ashton-under-Lyne, Greater Manchester",

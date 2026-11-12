@@ -86,6 +86,7 @@ def install() -> None:
                     c.execute("INSERT INTO menu_options(item_id,label,price,sort) VALUES(?,?,?,?)", (cur.lastrowid, label, price, i))
         set_setting("installed", True)
         set_setting("added_tiffin", True)
+        set_setting("menu_v2", True)
     if not get_setting("added_tiffin"):        # sites started before the tiffin service existed
         set_setting("added_tiffin", True)
         if not q1("SELECT id FROM menu_items WHERE slug='tiffin'"):
@@ -100,6 +101,11 @@ def install() -> None:
                     (photo, clip, slug))
         for kind, url, title in menu_data.LIBRARY_MEDIA:
             execute("INSERT INTO media(kind,url,title,created_at) VALUES(?,?,?,?)", (kind, url, title, iso_now()))
+    if not get_setting("menu_v2"):             # her flyer of 12 Nov 2026: new prices, portions and wording
+        set_setting("menu_v2", True)
+        _apply_flyer_menu()
+    if get_setting("shop_name") in ("The Pashtoon Flavours", "Pashtoon Flavours"):     # renamed to the owner's spelling
+        set_setting("shop_name", menu_data.DEFAULT_SETTINGS["shop_name"])
     for slug in menu_data.ENQUIRY_ITEMS:
         execute("UPDATE menu_items SET enquiry=1 WHERE slug=?", (slug,))
     if not get_setting("partner_key"):
@@ -107,6 +113,33 @@ def install() -> None:
     for key in ("calendar_token", "kitchen_token"):
         if not get_setting(key):
             set_setting(key, secrets.token_urlsafe(18))
+
+
+def _apply_flyer_menu() -> None:
+    """One-off update of an existing menu to the flyer. Photos and videos stay as they are; portions are matched
+    to the old ones so recipes and history stay attached, and old portions the flyer drops are switched off, not deleted."""
+    with tx() as c:
+        for sort, (slug, name, cat, desc, img, notice, opts) in enumerate(menu_data.MENU):
+            row = c.execute("SELECT id FROM menu_items WHERE slug=?", (slug,)).fetchone()
+            if not row:
+                continue        # she removed this dish; do not bring it back
+            iid = row["id"]
+            c.execute("UPDATE menu_items SET name=?, category=?, description=?, notice_hours=?, sort=? WHERE id=?",
+                      (name, cat, desc, notice, sort, iid))
+            old = {o["label"]: o["id"] for o in c.execute("SELECT id,label FROM menu_options WHERE item_id=? AND active=1 ORDER BY id", (iid,))}
+            kept = set()
+            for i, (label, price) in enumerate(opts):
+                oid = old.get(menu_data.MENU_V2_FROM.get((slug, label), label))
+                if oid is None and len(old) == 1 and len(opts) == 1:
+                    oid = next(iter(old.values()))
+                if oid is not None and oid not in kept:
+                    c.execute("UPDATE menu_options SET label=?, price=?, sort=? WHERE id=?", (label, price, i, oid))
+                    kept.add(oid)
+                else:
+                    c.execute("INSERT INTO menu_options(item_id,label,price,sort) VALUES(?,?,?,?)", (iid, label, price, i))
+            for oid in old.values():
+                if oid not in kept:
+                    c.execute("UPDATE menu_options SET active=0 WHERE id=?", (oid,))
 
 
 def money(x: float) -> str:
