@@ -55,6 +55,7 @@ DEFAULT_SETTINGS = {
     "instagram": "thepashtoonflavours",
     "tiktok": "thepashtoonflavours",
     "accepting_orders": True,
+    "qa_auto": True,                  # answer repeat questions from her saved answers (only ones she wrote or approved)
     "offers_delivery": False,         # collection only for now; switch on in Settings
     # Delivery partners: shown as "Also on ..." links when on; commission is used in the accounts.
     "partners": {k: {"on": False, "url": "", "commission": 30} for k, _ in PARTNERS},

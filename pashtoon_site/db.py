@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS tiffin_subs (
   address TEXT, postcode TEXT, days TEXT NOT NULL, time TEXT NOT NULL, start_date TEXT NOT NULL, weeks INTEGER NOT NULL DEFAULT 0,
   payment_method TEXT NOT NULL DEFAULT 'cash', meal_price REAL NOT NULL, notes TEXT, status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS qa_entries (
+  id INTEGER PRIMARY KEY, question TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'none',
+  status TEXT NOT NULL DEFAULT 'suggested', blocked TEXT NOT NULL DEFAULT '', pending_answer TEXT NOT NULL DEFAULT '',
+  asks INTEGER NOT NULL DEFAULT 0, hits INTEGER NOT NULL DEFAULT 0, corrections INTEGER NOT NULL DEFAULT 0,
+  last_asked TEXT, last_used TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS qa_phrasings (
+  id INTEGER PRIMARY KEY, entry_id INTEGER NOT NULL REFERENCES qa_entries(id) ON DELETE CASCADE, text TEXT NOT NULL,
+  norm TEXT NOT NULL, UNIQUE(entry_id, norm));
 CREATE INDEX IF NOT EXISTS orders_date ON orders(date);
 CREATE INDEX IF NOT EXISTS chat_conv ON chat_log(conversation_id);
 """
@@ -114,6 +122,7 @@ COLUMNS = [
     ("orders", "tiffin_id", "INTEGER"),
     ("orders", "partner_ref", "TEXT"),
     ("menu_items", "enquiry", "INTEGER NOT NULL DEFAULT 0"),
+    ("chat_log", "qa_id", "INTEGER"),
 ]
 
 

@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import accounts, agent, backup, config, db, llm, menu_data, messages, meta, notify, payments, reports, shop, tasks, tiffin
+from . import accounts, agent, backup, config, db, llm, menu_data, messages, meta, notify, payments, qa, reports, shop, tasks, tiffin
 from . import partners as partners_mod
 from .shop import ShopError
 
@@ -591,7 +591,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             current = db.q1("SELECT * FROM conversations WHERE id=?", (conv_id,))
             if not current:
                 raise HTTPException(404, "No such chat.")
-            lines = agent.chat_lines(conv_id)
+            lines = agent.chat_lines_owner(conv_id)
             db.execute("UPDATE conversations SET unread=0 WHERE id=?", (conv_id,))
         return render(request, "owner/inbox.html", convs=convs, current=current, lines=lines, ai_on=agent.configured())
 
@@ -621,6 +621,62 @@ def create_app(db_path: str | None = None) -> FastAPI:
         await check_csrf(request)
         db.execute("UPDATE conversations SET needs_owner=0, unread=0 WHERE id=?", (conv_id,))
         return back(f"/owner/inbox/{conv_id}", "Marked as handled.")
+
+    # ------------------------------------------------------------ answers (the learning Q&A memory)
+
+    @app.get("/owner/answers", response_class=HTMLResponse)
+    def answers(request: Request, test: str = ""):
+        need_owner(request)
+        return render(request, "owner/answers.html", a=qa.overview(), test=test[:240], tried=qa.explain(test[:240]), auto=bool(shop.setting("qa_auto")),
+                      auto_score=qa.AUTO_SCORE)
+
+    async def _answer_action(request: Request, fn, ok: str, *args):
+        need_owner(request)
+        await check_csrf(request)
+        try:
+            fn(*args)
+        except ShopError as e:
+            return back("/owner/answers", error=str(e))
+        return back("/owner/answers", ok)
+
+    @app.post("/owner/answers/settings")
+    async def answers_settings(request: Request, auto: str = Form("")):
+        need_owner(request)
+        await check_csrf(request)
+        db.set_setting("qa_auto", bool(auto))
+        return back("/owner/answers", "Saved answers will be used automatically." if auto else "Automatic answers are off. Nothing is learnt less; it just isn't used.")
+
+    @app.post("/owner/answers/new")
+    async def answers_new(request: Request, question: str = Form(""), answer: str = Form(""), force: str = Form("")):
+        return await _answer_action(request, qa.add, "Saved. Customers who ask this will get your answer.", question, answer, bool(force))
+
+    @app.post("/owner/answers/{eid}/save")
+    async def answers_save(request: Request, eid: int, question: str = Form(""), answer: str = Form(""), force: str = Form("")):
+        return await _answer_action(request, qa.save, "Saved.", eid, question, answer, bool(force))
+
+    @app.post("/owner/answers/{eid}/approve")
+    async def answers_approve(request: Request, eid: int):
+        return await _answer_action(request, qa.approve, "Approved. It will be used from now on.", eid)
+
+    @app.post("/owner/answers/{eid}/enable")
+    async def answers_enable(request: Request, eid: int):
+        return await _answer_action(request, qa.set_enabled, "Switched on.", eid, True)
+
+    @app.post("/owner/answers/{eid}/disable")
+    async def answers_disable(request: Request, eid: int):
+        return await _answer_action(request, qa.set_enabled, "Switched off. It stays saved but won't be used.", eid, False)
+
+    @app.post("/owner/answers/{eid}/delete")
+    async def answers_delete(request: Request, eid: int):
+        return await _answer_action(request, qa.delete, "Deleted.", eid)
+
+    @app.post("/owner/answers/{eid}/merge")
+    async def answers_merge(request: Request, eid: int, into: int = Form(0)):
+        return await _answer_action(request, qa.merge, "Merged.", eid, into)
+
+    @app.post("/owner/answers/{eid}/correction")
+    async def answers_correction(request: Request, eid: int, use_new: str = Form("")):
+        return await _answer_action(request, qa.accept_correction, "Updated." if use_new else "Kept the original answer.", eid, bool(use_new))
 
     # ------------------------------------------------------------ calendar
 
