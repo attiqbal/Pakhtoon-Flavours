@@ -1,4 +1,4 @@
-# The Pashtoon Flavours website
+# Pakhtoon Flavours website
 
 Aarzu's own restaurant website: online menu and pre-ordering, an owner dashboard, a kitchen screen, and an AI
 assistant that answers customers. It is a standalone app with its own database, separate from the Kevin platform.

@@ -65,15 +65,17 @@ def checkout(c, items, **kw):
 def test_real_menu_loaded_and_public_pages(client):
     names = [i["name"] for i in shop.menu()]
     for dish in ["Dam Pukh", "Painda (Sohbat)", "Bannu Beef Pulao", "Namkeen Gosht", "Peshawari Kebab", "Peshawari Karahi",
-                 "Peshawari Raan Pulao", "Nan", "Kheer"]:
+                 "Peshawari Raan Pulao", "Tandoori Nan", "Kheer"]:
         assert dish in names
-    assert shop.find_option("Dam Pukh", "family")["price"] == 40
+    assert shop.find_option("Dam Pukh")["price"] == 40       # family portion only, no per-person sizes
+    assert [len(i["options"]) for i in shop.menu() if i["slug"] in ("dampukh", "painda", "pulao", "raan")] == [1, 1, 1, 1]
+    assert shop.find_option("Raan")["price"] == 120
     assert shop.find_option("Raan")["notice_hours"] == 48
     assert db.q1("SELECT COUNT(*) n FROM orders")["n"] == 0     # no demo orders
     for path in ["/", "/menu", "/checkout", "/owner/login"]:
         assert client.get(path).status_code == 200
     menu = client.get("/menu").text
-    assert "Namkeen Gosht" in menu and "£110.00" in menu and "AI assistant" in menu
+    assert "Namkeen Gosht" in menu and "£120.00" in menu and "AI assistant" in menu
 
 
 def test_install_is_idempotent(client):
@@ -89,17 +91,17 @@ def test_quote_and_delivery_bands(client):
     with pytest.raises(shop.ShopError, match="only doing collection"):    # collection only by default
         shop.delivery_quote("OL6 6AA")
     db.set_setting("offers_delivery", True)
-    lines = [{"option_id": opt("Dam Pukh", "per person"), "qty": 2}, {"option_id": opt("Nan"), "qty": 2}]
+    lines = [{"option_id": opt("Dam Pukh"), "qty": 1}, {"option_id": opt("Nan"), "qty": 2}]
     q = shop.quote(lines, "collection", d=day(), t="18:00")
-    assert q["food_total"] == 34 and q["total"] == 34
+    assert q["food_total"] == 46 and q["total"] == 46
     near = shop.quote(lines, "delivery", "OL6 6AA", day(), "18:00")
-    assert near["delivery_fee"] == 3.99 and near["total"] == 37.99
+    assert near["delivery_fee"] == 3.99 and near["total"] == 49.99
     mid = shop.quote(lines, "delivery", "M1 1AE", day(), "18:00")     # about 6 miles
     assert mid["delivery_fee"] == 5.99
     with pytest.raises(shop.ShopError, match="minimum order of £50"):   # over 6 miles needs £50 of food
         shop.quote(lines, "delivery", "WA1 1AA", day(), "18:00")
     far = shop.quote(lines * 2, "delivery", "WA1 1AA", day(), "18:00")
-    assert far["delivery_fee"] == 7.99 and far["food_total"] == 68
+    assert far["delivery_fee"] == 7.99 and far["food_total"] == 92
     with pytest.raises(shop.ShopError, match="couldn't find"):
         shop.quote(lines, "delivery", "ZZ9 9ZZ", day(), "18:00")
 
@@ -129,7 +131,7 @@ def test_checkout_tracking_payment_and_cancel(client):
     assert r.status_code == 303, r.text[:500]
     code = r.headers["location"].split("/o/")[1].split("?")[0]
     page = client.get(f"/o/{code}?new=1").text
-    assert "Thank you" in page and "£31.99" in page and "Naan: yes, 3" in page and "cancellation policy" in page
+    assert "Thank you" in page and "£36.99" in page and "Naan: yes, 3" in page and "cancellation policy" in page
     o = shop.get_order_by_code(code)
     assert o["postcode"] == "OL6 6AA" and o["delivery_fee"] == 3.99 and o["status"] == "confirmed"
     assert any("New order" in a["text"] for a in shop.alerts())
@@ -173,14 +175,14 @@ def test_owner_pages_need_login(client):
 
 def test_owner_pages_render(client):
     login(client)
-    o = shop.place_order([{"option_id": opt("Karahi", "lamb, 1kg"), "qty": 1}], "Bilal", "07700900003", "collection", day(2), "19:00", "cash")
+    o = shop.place_order([{"option_id": opt("Karahi", "lamb"), "qty": 1}], "Bilal", "07700900003", "collection", day(2), "19:00", "cash")
     for path in ["/owner", "/owner/orders", "/owner/orders?view=unpaid", f"/owner/orders/{o['id']}", "/owner/orders/new", "/owner/inbox",
                  "/owner/calendar", "/owner/menu", f"/owner/menu/{o['items'][0]['option_id'] and shop.option(o['items'][0]['option_id'])['item_id']}",
                  "/owner/menu/new", "/owner/stock", "/owner/money", "/owner/settings", "/owner/assistant", "/kitchen"]:
         r = client.get(path)
         assert r.status_code == 200, path
     page = client.get(f"/owner/orders/{o['id']}").text
-    assert "wa.me/447700900003" in page and "Thank you for your order with The Pashtoon Flavours" in page
+    assert "wa.me/447700900003" in page and "Thank you for your order with Pakhtoon Flavours" in page
 
 
 def test_phone_order_status_and_kitchen(client):
@@ -191,7 +193,7 @@ def test_phone_order_status_and_kitchen(client):
     assert r.status_code == 303
     oid = int(r.headers["location"].split("/orders/")[1].split("?")[0])
     k = client.get(f"/api/kitchen?day={day(2)}").json()
-    assert k["orders"][0]["id"] == oid and k["totals"] == [["Bannu Beef Pulao · Family portion (serves 5)", 1]]
+    assert k["orders"][0]["id"] == oid and k["totals"] == [["Bannu Beef Pulao · Family portion", 1]]
     r = client.post(f"/api/kitchen/{oid}/status", json={"status": "cooking"}, headers={"X-CSRF": csrf(client, "/owner")})
     assert r.status_code == 200 and shop.get_order(oid)["status"] == "cooking"
 
@@ -205,7 +207,7 @@ def test_kitchen_tablet_link(client):
 
 def test_recipes_stock_shopping_writeoff_and_money(client):
     login(client)
-    dp = opt("Dam Pukh", "per person")
+    dp = opt("Dam Pukh")
     shop.set_recipe(dp, "250 g lamb\n1 pcs onion\n1 tbsp oil")
     shop.record_purchase("lamb", 1, "kg", 12)
     o = shop.place_order([{"option_id": dp, "qty": 6}], "Zainab", "07700900005", "collection", day(2), "18:00", "cash")
@@ -221,7 +223,7 @@ def test_recipes_stock_shopping_writeoff_and_money(client):
     shop.set_payment(o["id"], "paid")
     db.execute("UPDATE orders SET date=? WHERE id=?", (shop.today(), o["id"]))
     m = shop.summary(*shop.period("month"))
-    assert m["sales"] == 90 and m["purchases"] == 36 and m["other"] == 9.5 and m["profit"] == 44.5 and m["waste"] == 2.4
+    assert m["sales"] == 240 and m["purchases"] == 36 and m["other"] == 9.5 and m["profit"] == 194.5 and m["waste"] == 2.4
     assert "Spoiled" in client.get("/owner/stock").text
     r = client.post("/owner/stock/writeoff", data={"csrf": csrf(client, "/owner/stock"), "ingredient": str(shop.ingredient("lamb")["id"]),
                                                     "qty": "0.1", "unit": "kg", "reason": "Leftover"})
@@ -241,7 +243,7 @@ def test_menu_edit_and_settings(client):
     r = client.post("/owner/settings", data={"csrf": csrf(client, "/owner/settings"), "accepting_orders": "1", "offers_delivery": "1",
                                               "offers_collection": "1", "pay_cash": "1", "slot_start": "13:00", "slot_end": "20:00", "slot_minutes": "30",
                                               "daily_order_limit": "8", "bank_details": "Sort 00-00-00", "band_miles_0": "3", "band_fee_0": "4.50",
-                                              "band_fee_1": "8", "band_min_1": "60", "max_delivery_miles": "10", "shop_name": "The Pashtoon Flavours"})
+                                              "band_fee_1": "8", "band_min_1": "60", "max_delivery_miles": "10", "shop_name": "Pakhtoon Flavours"})
     assert r.status_code == 303
     assert shop.setting("daily_order_limit") == 8 and shop.setting("delivery_bands") == [[3, 4.5, 0], [None, 8, 60]]
     assert shop.time_slots()[0] == "13:00"
@@ -283,10 +285,10 @@ def test_chat_without_ai_goes_to_owner(client):
 
 
 def test_ai_takes_an_order_and_says_it_is_an_ai(client):
-    items = [{"dish": "Painda", "portion": "per person", "qty": 2}]
+    items = [{"dish": "Painda", "portion": "family", "qty": 1}]
     fake = FakeClaude([
         [{"type": "tool_use", "id": "t1", "name": "quote_order", "input": {"items": items, "fulfilment": "collection", "date": day(), "time": "18:00"}}],
-        [{"type": "text", "text": "Hi, I'm Zara, the AI assistant. 2 x Painda per person, total £24.00. Shall I place it?"}],
+        [{"type": "text", "text": "Hi, I'm Zara, the AI assistant. 1 x Painda family portion, total £40.00. Shall I place it?"}],
         [{"type": "tool_use", "id": "t2", "name": "place_order", "input": {"items": items, "fulfilment": "collection", "date": day(), "time": "18:00",
                                                                              "name": "Maryam", "phone": "07700900007", "payment_method": "cash"}}],
         [{"type": "text", "text": "Done! Your order number is in the link above."}],
@@ -295,12 +297,12 @@ def test_ai_takes_an_order_and_says_it_is_an_ai(client):
     t = csrf(client)
     r = client.post("/api/chat/send", json={"text": "2 painda for Friday 6pm collection"}, headers={"X-CSRF": t}).json()
     assert "AI assistant" in r["lines"][-1]["text"]
-    assert "total £24.00" in fake.calls[1]["messages"][-1]["content"][0]["content"]
+    assert "total £40.00" in fake.calls[1]["messages"][-1]["content"][0]["content"]
     system = fake.calls[0]["system"]
     assert "You are an AI, and you say so" in system and "Never claim to be human" in system
     r = client.post("/api/chat/send", json={"text": "yes please"}, headers={"X-CSRF": t}).json()
     o = db.q1("SELECT * FROM orders")
-    assert o and o["customer_name"] == "Maryam" and o["total"] == 24 and o["source"] == "chat"
+    assert o and o["customer_name"] == "Maryam" and o["total"] == 40 and o["source"] == "chat"
     poll = client.get("/api/chat/poll?after=0").json()["lines"]
     assert [l["sender"] for l in poll] == ["customer", "ai", "customer", "ai"]
 
@@ -330,7 +332,7 @@ def test_order_status_tool_checks_phone(client):
 
 def test_owner_assistant(client):
     login(client)
-    dp = opt("Painda", "per person")
+    dp = opt("Painda")
     agent.set_client(FakeClaude([
         [{"type": "tool_use", "id": "u1", "name": "update_price", "input": {"option_id": dp, "price": 14}}],
         [{"type": "text", "text": "Done: Painda per person is now £14."}],
@@ -455,10 +457,10 @@ def test_only_measurable_ingredients_are_tracked(client):
     assert "Lamb" in names and "Garam masala" not in names
     assert [i["name"] for i in shop.ingredients(tracked=False)] == ["Garam masala"]
     assert db.q1("SELECT account FROM expenses")["account"] == "5300"
-    shop.set_recipe(opt("Dam Pukh", "per person"), "250 g lamb\n5 g cumin\n2 g salt\n1 pcs onion")
-    rows = {r["name"]: r["tracked"] for r in shop.recipe(opt("Dam Pukh", "per person"))}
+    shop.set_recipe(opt("Dam Pukh"), "250 g lamb\n5 g cumin\n2 g salt\n1 pcs onion")
+    rows = {r["name"]: r["tracked"] for r in shop.recipe(opt("Dam Pukh"))}
     assert rows == {"lamb": 1, "cumin": 0, "salt": 0, "onion": 1} or rows["cumin"] == 0 and rows["onion"] == 1
-    o = shop.place_order([{"option_id": opt("Dam Pukh", "per person"), "qty": 2}], "A", "07700900003", "collection", day(), "18:00", "cash")
+    o = shop.place_order([{"option_id": opt("Dam Pukh"), "qty": 2}], "A", "07700900003", "collection", day(), "18:00", "cash")
     sl = shop.shopping_list(day(), day())
     assert [r["name"] for r in sl["rows"]] == ["onion"]      # lamb is already in stock; spices are not listed
     assert "cumin" in sl["check"] and "salt" in sl["check"]
@@ -475,9 +477,9 @@ def test_books_balance_and_reports_export(client):
     shop.record_purchase("Lamb", 2, "kg", 40)
     shop.add_expense(t, "Gas and electric", "Gas", 20)
     shop.add_expense(t, "Packaging", "Trays on credit", 10, paid_from="2110")
-    o = shop.place_order([{"option_id": opt("Dam Pukh", "family"), "qty": 1}], "A", "07700900004", "collection", day(), "18:00", "cash")
+    o = shop.place_order([{"option_id": opt("Dam Pukh"), "qty": 1}], "A", "07700900004", "collection", day(), "18:00", "cash")
     shop.set_payment(o["id"], "paid")
-    shop.set_recipe(opt("Dam Pukh", "family"), "1000 g lamb")
+    shop.set_recipe(opt("Dam Pukh"), "1000 g lamb")
     shop.set_status(o["id"], "cooking")
     end = day(3)
     tb = accounts.trial_balance(end)
@@ -622,7 +624,7 @@ def test_landing_page_and_phone_layout(client):
 
 
 def test_calendar_feed_names_card_payments(client):
-    o = shop.place_order([{"option_id": opt("Dam Pukh", "Per person"), "qty": 1}], "Card Person", "07700900111", "collection",
+    o = shop.place_order([{"option_id": opt("Dam Pukh"), "qty": 1}], "Card Person", "07700900111", "collection",
                          day(3), "18:00", "card", by_owner=True)
     assert "card online" in shop.ics_feed() and "bank transfer" not in shop.ics_feed()
     assert o["payment_method"] == "card"
@@ -688,7 +690,7 @@ def test_alert_fallbacks_and_settings_card(client, sent):
     db.set_setting("owner_email", "aarzu@example.com")
     db.set_setting("alert_whatsapp", False)
     shop.alert("order", "x")
-    assert sent[-1] == ("email", "The Pashtoon Flavours: alert")      # fallback: no other channel worked
+    assert sent[-1] == ("email", "Pakhtoon Flavours: alert")      # fallback: no other channel worked
     sent.clear()
     db.set_setting("alert_ntfy", True); db.set_setting("ntfy_topic", "t-123")
     shop.alert("order", "y")
@@ -825,8 +827,8 @@ def test_partner_email_import(client):
 def test_cancel_returns_stock_month_covers_whole_month_and_no_greeting(client):
     from pashtoon_site import accounts
     shop.record_purchase("Lamb", 2, "kg", 40)
-    shop.set_recipe(opt("Dam Pukh", "per person"), "500 g lamb")
-    o = shop.place_order([{"option_id": opt("Dam Pukh", "per person"), "qty": 1}], "A", "07700900008", "collection", day(), "18:00", "cash")
+    shop.set_recipe(opt("Dam Pukh"), "500 g lamb")
+    o = shop.place_order([{"option_id": opt("Dam Pukh"), "qty": 1}], "A", "07700900008", "collection", day(), "18:00", "cash")
     shop.set_status(o["id"], "cooking")
     assert shop.ingredient("Lamb")["stock"] == 1500
     shop.set_status(o["id"], "cancelled")
@@ -856,3 +858,19 @@ def test_food_hygiene_badge(client):
     assert "error" in r.headers["location"] and shop.setting("hygiene_link").endswith("/123456")
     client.post("/owner/settings", data=form | {"hygiene_rating": "", "csrf": csrf(client, "/owner/settings")})
     assert "FOOD HYGIENE RATING" not in client.get("/").text
+
+
+def test_flyer_update_migrates_an_existing_menu(client):
+    """A site started on the earlier menu is moved to the flyer: portions carry over, photos stay, old sizes are switched off."""
+    pulao = db.q1("SELECT id FROM menu_items WHERE slug='pulao'")["id"]
+    db.execute("UPDATE menu_options SET label='Family portion (serves 5)', price=35 WHERE item_id=?", (pulao,))
+    db.execute("INSERT INTO menu_options(item_id,label,price,sort) VALUES(?,?,?,?)", (pulao, "Per person", 12, 0))
+    db.execute("UPDATE menu_items SET name='Old name', image='/media/hers.jpg' WHERE id=?", (pulao,))
+    db.set_setting("shop_name", "The Pashtoon Flavours")
+    db.set_setting("menu_v2", False)
+    shop.install()
+    opts = db.q("SELECT label, active FROM menu_options WHERE item_id=? ORDER BY id", (pulao,))
+    assert opts == [{"label": "Family portion", "active": 1}, {"label": "Per person", "active": 0}]
+    item = db.q1("SELECT name, image FROM menu_items WHERE id=?", (pulao,))
+    assert item == {"name": "Bannu Beef Pulao", "image": "/media/hers.jpg"}
+    assert shop.setting("shop_name") == "Pakhtoon Flavours"

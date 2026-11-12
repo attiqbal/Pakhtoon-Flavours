@@ -8,8 +8,8 @@ def brand() -> str:
 
 
 def order_confirmation(o: dict) -> str:
-    dishes = "\n".join(f"   - {i['qty']} x {i['dish']} ({i['portion']})" for i in o["items"] if i["dish"] != "Nan")
-    naan = sum(i["qty"] for i in o["items"] if i["dish"] == "Nan")
+    dishes = "\n".join(f"   - {i['qty']} x {i['dish']} ({i['portion']})" for i in o["items"] if i["dish"] not in ("Nan", "Tandoori Nan"))
+    naan = sum(i["qty"] for i in o["items"] if i["dish"] in ("Nan", "Tandoori Nan"))
     lines = [f"Thank you for your order with {brand()} 🌟", "",
              f"Your order (no. {o['id']}) has been confirmed with the following details:",
              f"• Dish(es):\n{dishes}" if dishes else "• Dish(es): none",
