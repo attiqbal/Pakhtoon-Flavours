@@ -104,7 +104,7 @@ def install() -> None:
     if not get_setting("menu_v2"):             # her flyer of 12 Nov 2026: new prices, portions and wording
         set_setting("menu_v2", True)
         _apply_flyer_menu()
-    if get_setting("shop_name") in ("The Pashtoon Flavours", "Pashtoon Flavours"):     # renamed to the owner's spelling
+    if get_setting("shop_name") in ("The Pashtoon Flavours", "Pashtoon Flavours", "The Pakhtoon Flavours"):     # renamed to the owner's spelling
         set_setting("shop_name", menu_data.DEFAULT_SETTINGS["shop_name"])
     for slug in menu_data.ENQUIRY_ITEMS:
         execute("UPDATE menu_items SET enquiry=1 WHERE slug=?", (slug,))
@@ -907,7 +907,7 @@ def ics_feed() -> str:
     def esc(s: str) -> str:
         return (s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
     start = (now().date() - timedelta(days=60)).isoformat()
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//The Pashtoon Flavours//Orders//EN", "CALSCALE:GREGORIAN",
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Pakhtoon Flavours//Orders//EN", "CALSCALE:GREGORIAN",
              f"X-WR-CALNAME:{esc(setting('shop_name'))} orders", "X-WR-TIMEZONE:Europe/London"]
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     for o in list_orders(start, None):
