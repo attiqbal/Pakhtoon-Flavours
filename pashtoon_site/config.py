@@ -12,6 +12,8 @@ DATA_DIR = _env("PASHTOON_DATA_DIR", "data")
 DB_PATH = _env("PASHTOON_DB", os.path.join(DATA_DIR, "pashtoon_site.db"))
 BASE_URL = _env("PASHTOON_BASE_URL", "http://localhost:8000").rstrip("/")
 OWNER_PASSWORD = _env("OWNER_PASSWORD")          # used once, to set the owner's password on first start
+OWNER_EMAIL = _env("OWNER_EMAIL").lower()        # the owner's login email; with OWNER_PASSWORD it creates the owner on first start
+OWNER_MUST_CHANGE = _env("OWNER_MUST_CHANGE") == "1"   # make the owner choose a new password at first login
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
 # The strongest model by default: it handles unusual questions, menu edits and accounts best. Owners can pick a
 # cheaper one in Settings. Override here with CLAUDE_MODEL in .env.

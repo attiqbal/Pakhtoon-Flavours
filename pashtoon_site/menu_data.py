@@ -3,7 +3,7 @@ start, into an empty database; after that she edits it in the dashboard. No samp
 
 MENU = [
     # slug, name, category, description, image, notice hours, [(option, price)]
-    # Source of truth: her flyer of 12 Nov 2026. Kheer is not on the flyer, so it keeps its earlier price.
+    # Source of truth: her flyer of 12 Nov 2026. Kheer was dropped (discontinued).
     ("dampukh", "Dam Pukh", "mains",
      "Traditional South Pukhtunkhwa dish: meat slow-cooked in a sealed container with onions, potatoes, tomatoes and chilli, served with nan bread.",
      "dampukh.jpg", 24, [("Family portion (1kg)", 40)]),
@@ -30,9 +30,6 @@ MENU = [
     ("nan", "Tandoori Nan", "extras", "Fresh tandoori nan bread.", None, 24, [("Each", 3)]),
     ("chutney", "Fresh Chutney", "extras", "Homemade mint chutney.", None, 24, [("Pot", 2)]),
     ("salad", "Fresh Salad", "extras", "Fresh salad.", None, 24, [("Portion", 2)]),
-    ("kheer", "Kheer", "dessert",
-     "Creamy rice pudding inspired by the timeless flavours of Peshawar's Qissa Khwani Bazaar.",
-     "kheer.jpg", 24, [("Per serving", 7.5)]),
     ("tiffin", "Tiffin Service", "tiffin",
      "Weekly tiffin service available. Home-cooked meals delivered to your routine. Ask us about plans, days and prices.",
      None, 24, []),
@@ -73,7 +70,8 @@ DEFAULT_SETTINGS = {
     "partner_key": "",                # secret for /api/partner-orders (made on first start)
     "offers_collection": True,
     # miles up to (None = any distance), fee, minimum food order for that band
-    "delivery_bands": [[3, 3.99, 0], [6, 5.99, 0], [None, 7.99, 50]],
+    "delivery_bands": [[3, 3.99, 0], [6, 5.99, 0], [None, 7.99, 0]],
+    "delivery_minimum": 50,           # smallest food total for delivery; collection has no minimum
     "max_delivery_miles": 0,          # 0 = no limit
     "slot_start": "12:00",
     "slot_end": "21:00",
@@ -89,6 +87,8 @@ DEFAULT_SETTINGS = {
     "hygiene_rating": "5",
     "hygiene_link": "https://ratings.food.gov.uk",
     "announcement": "",
+    "owner_login_email": "",           # the owner signs in with this email and her password
+    "owner_must_change_password": False,
     "ai_enabled": True,
     "assistant_name": "Zara",
     "ai_model": "",                   # empty = CLAUDE_MODEL from .env (Opus by default, the strongest model)

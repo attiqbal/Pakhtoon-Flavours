@@ -113,6 +113,11 @@
             document.getElementById("fee").textContent = delivery() && body.fulfilment === "collection" ? "enter postcode" : money(q.delivery_fee);
             document.getElementById("total").textContent = money(q.total);
             errBox.classList.add("hide");
+            const min = Number(form.dataset.deliveryMin || 0);
+            if (delivery() && min && q.food_total < min) {
+              errBox.textContent = "Delivery needs a minimum order of " + money(min) + " (your food comes to " + money(q.food_total) + "). Add a little more, or choose collection, which has no minimum.";
+              errBox.classList.remove("hide");
+            }
           } else { errBox.textContent = q.error; errBox.classList.remove("hide"); }
         } catch (e) {}
       }, 350);

@@ -106,6 +106,13 @@ def install() -> None:
         _apply_flyer_menu()
     if get_setting("shop_name") in ("The Pashtoon Flavours", "Pashtoon Flavours", "The Pakhtoon Flavours"):     # renamed to the owner's spelling
         set_setting("shop_name", menu_data.DEFAULT_SETTINGS["shop_name"])
+    if not get_setting("rules_v1"):            # delivery minimum is one flat amount, not per distance band
+        set_setting("rules_v1", True)
+        set_setting("delivery_minimum", menu_data.DEFAULT_SETTINGS["delivery_minimum"])
+        set_setting("delivery_bands", [[u, f, 0] for u, f, _ in setting("delivery_bands")])
+    if not get_setting("kheer_removed"):       # Kheer is discontinued
+        set_setting("kheer_removed", True)
+        remove_item("kheer")
     for slug in menu_data.ENQUIRY_ITEMS:
         execute("UPDATE menu_items SET enquiry=1 WHERE slug=?", (slug,))
     if not get_setting("partner_key"):
@@ -113,6 +120,22 @@ def install() -> None:
     for key in ("calendar_token", "kitchen_token"):
         if not get_setting(key):
             set_setting(key, secrets.token_urlsafe(18))
+
+
+def remove_item(slug: str) -> None:
+    """Delete a dish and its portions and recipes. Past orders keep the dish name they were placed with."""
+    row = q1("SELECT id FROM menu_items WHERE slug=?", (slug,))
+    if not row:
+        return
+    with tx() as c:
+        ids = [r["id"] for r in c.execute("SELECT id FROM menu_options WHERE item_id=?", (row["id"],))]
+        for oid in ids:
+            c.execute("DELETE FROM recipe_lines WHERE option_id=?", (oid,))
+            c.execute("UPDATE order_items SET option_id=NULL WHERE option_id=?", (oid,))
+        c.execute("DELETE FROM menu_options WHERE item_id=?", (row["id"],))
+        c.execute("DELETE FROM menu_items WHERE id=?", (row["id"],))
+    if int(get_setting("promo_item_id", 0) or 0) == row["id"]:
+        set_setting("promo_item_id", 0)
 
 
 def _apply_flyer_menu() -> None:
@@ -331,8 +354,8 @@ def earliest_day(notice_hours: int = 24) -> str | None:
     return None
 
 
-def delivery_quote(postcode: str, food_total: float = 0) -> dict:
-    """{'miles', 'fee', 'minimum'} for a UK postcode, or ShopError."""
+def delivery_quote(postcode: str, food_total: float | None = None) -> dict:
+    """{'miles', 'fee', 'minimum'} for a UK postcode, or ShopError. The minimum is only enforced when the food total is given."""
     if not setting("offers_delivery"):
         raise ShopError("Sorry, we're only doing collection at the moment.")
     if not geo.valid(postcode):
@@ -343,23 +366,32 @@ def delivery_quote(postcode: str, food_total: float = 0) -> dict:
     cap = float(setting("max_delivery_miles") or 0)
     if cap and miles > cap:
         raise ShopError(f"Sorry, we deliver up to {cap:g} miles and that's about {miles:.1f} miles away.")
-    for upto, fee, minimum in setting("delivery_bands"):
+    for upto, fee, band_min in setting("delivery_bands"):
         if upto is None or miles <= upto:
-            if minimum and food_total and food_total < minimum:
-                raise ShopError(f"Delivery to {geo.normalise(postcode)} (about {miles:.1f} miles) needs a minimum order of £{minimum:.2f}.")
-            return {"miles": miles, "fee": float(fee), "minimum": float(minimum or 0)}
+            minimum = max(delivery_minimum(), float(band_min or 0))
+            if minimum and food_total is not None and food_total < minimum:
+                raise ShopError(f"Delivery needs a minimum order of {money(minimum)} (your food comes to {money(food_total)}). "
+                                "Add a little more, or choose collection, which has no minimum.")
+            return {"miles": miles, "fee": float(fee), "minimum": minimum}
     raise ShopError("Sorry, that's outside our delivery area.")
+
+
+def delivery_minimum() -> float:
+    """Smallest food total for a delivery order. Collection has no minimum."""
+    try:
+        return max(0.0, float(setting("delivery_minimum") or 0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def delivery_bands_text() -> str:
     out, prev = [], 0
-    for upto, fee, minimum in setting("delivery_bands"):
-        extra = f" (minimum order £{minimum:g})" if minimum else ""
+    for upto, fee, _ in setting("delivery_bands"):
         out.append(f"Up to {upto:g} miles: £{fee:.2f}" if upto is not None and prev == 0 else
-                   f"{prev:g} to {upto:g} miles: £{fee:.2f}" if upto is not None else f"Over {prev:g} miles: £{fee:.2f}{extra}")
-        if upto is not None and minimum:
-            out[-1] += extra
+                   f"{prev:g} to {upto:g} miles: £{fee:.2f}" if upto is not None else f"Over {prev:g} miles: £{fee:.2f}")
         prev = upto or prev
+    if delivery_minimum():
+        out.append(f"Minimum order for delivery: {money(delivery_minimum())}. Collection has no minimum.")
     return "\n".join(out)
 
 

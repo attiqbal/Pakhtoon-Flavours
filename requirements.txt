@@ -9,3 +9,4 @@ anthropic>=0.40
 tzdata
 openpyxl
 reportlab
+segno

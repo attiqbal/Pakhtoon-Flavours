@@ -54,8 +54,8 @@
       <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="field"><label>Up to miles</label><input name="band_miles_{{ i }}" value="{{ ('%g'|format(b[0])) if b and b[0] is not none else '' }}" placeholder="{{ 'any distance' if b else '' }}"></div>
         <div class="field"><label>Charge £</label><input name="band_fee_{{ i }}" value="{{ ('%.2f'|format(b[1])) if b else '' }}"></div>
-        <div class="field"><label>Minimum order £</label><input name="band_min_{{ i }}" value="{{ ('%g'|format(b[2])) if b and b[2] else '' }}"></div>
       </div>{% endfor %}
+      <div class="field"><label>Minimum order for delivery £</label><input name="delivery_minimum" value="{{ '%g'|format(st.delivery_minimum) }}" style="max-width:120px"><div class="hint">Food total needed to order delivery. 0 means no minimum. Collection never has a minimum.</div></div>
       <div class="field"><label>Furthest delivery (miles)</label><input name="max_delivery_miles" value="{{ '%g'|format(st.max_delivery_miles) }}" style="max-width:120px"><div class="hint">0 means no limit. Leave "up to miles" empty on the last band for "anything further".</div></div>
     </div>
   </div>
@@ -130,6 +130,7 @@
   </div>
   <form method="post" action="/owner/settings/password" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
     <h2>Password</h2>
+    <p class="small muted">Signed in as {{ st.owner_login_email or 'the owner' }}.</p>
     <div class="field"><label>Current password</label><input type="password" name="current" autocomplete="current-password" required></div>
     <div class="field"><label>New password</label><input type="password" name="new" autocomplete="new-password" minlength="8" required></div>
     <button class="btn">Change password</button>

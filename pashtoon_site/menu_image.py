@@ -1,0 +1,283 @@
+"""Shareable menu image (PNG, PDF) and QR code, drawn from the live menu so a price change shows up the next time.
+
+Style follows her printed menu: warm cream, dark headings, red prices, her dish photos. Fonts are the Bitstream Vera
+fonts that ship with reportlab, so nothing extra needs installing on the server."""
+import io
+import os
+
+import segno
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+from reportlab import __file__ as _rl_file
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas as pdf_canvas
+
+from . import config, shop
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+FONT_DIR = os.path.join(os.path.dirname(_rl_file), "fonts")
+W = 1654                       # A4 width at 200 dpi
+MIN_H = 2339                   # A4 height at 200 dpi
+INK, RED, MUTED, LINE = (27, 27, 27), (163, 49, 42), (95, 90, 84), (201, 167, 140)
+FOREST = (0, 71, 60)
+M = 100                        # side margin
+PHOTO = (240, 200)
+PRICE_W = 132
+
+
+def _font(kind: str, size: int) -> ImageFont.FreeTypeFont:
+    name = {"r": "Vera.ttf", "b": "VeraBd.ttf", "i": "VeraIt.ttf"}[kind]
+    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
+
+
+def public_url() -> str:
+    """The address the QR code and the menu image point at: the one-page menu."""
+    return config.BASE_URL + "/m"
+
+
+def photo_path(img: str | None) -> str | None:
+    if not img:
+        return None
+    if img.startswith("/media/"):
+        p = os.path.join(config.UPLOAD_DIR, os.path.basename(img))
+    elif img.startswith("/static/"):
+        p = os.path.join(HERE, "static", img[len("/static/"):])
+    elif img.startswith("/"):
+        return None
+    else:
+        p = os.path.join(HERE, "static", "img", img)
+    return p if os.path.exists(p) else None
+
+
+def _wrap(draw: ImageDraw.ImageDraw, text: str, font, width: int) -> list[str]:
+    lines, cur = [], ""
+    for word in (text or "").split():
+        trial = (cur + " " + word).strip()
+        if draw.textlength(trial, font=font) <= width or not cur:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _price(x: float) -> str:
+    return shop.money(x)
+
+
+def qr_png(url: str | None = None, scale: int = 12, dark: str = "#00473c") -> bytes:
+    buf = io.BytesIO()
+    segno.make(url or public_url(), error="m").save(buf, kind="png", scale=scale, border=3, dark=dark, light="white")
+    return buf.getvalue()
+
+
+def qr_svg(url: str | None = None) -> bytes:
+    buf = io.BytesIO()
+    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#00473c", light="white", xmldecl=False)
+    return buf.getvalue()
+
+
+def _rounded_photo(path: str, size: tuple[int, int]) -> Image.Image:
+    im = ImageOps.fit(Image.open(path).convert("RGB"), size, Image.LANCZOS)
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size[0], size[1]), radius=18, fill=255)
+    im.putalpha(mask)
+    return im
+
+
+def _cards_and_lists() -> tuple[list[dict], list[tuple[str, list[tuple[str, str]]]]]:
+    """Dishes with a photo get a card; everything else is a compact list under its section name."""
+    cards, lists = [], []
+    for key, label, items in shop.menu_by_category():
+        rows = []
+        for it in items:
+            if it["enquiry"]:
+                rows.append(("Weekly plans", "ask us"))
+            elif path := photo_path(it["image"]):
+                cards.append({**it, "photo": path})
+            else:
+                for o in it["options"]:
+                    nm = it["name"] if len(it["options"]) == 1 and o["label"] in ("Portion", "Each", "Pot") else f"{it['name']} · {o['label']}"
+                    rows.append((nm, _price(o["price"])))
+        if rows:
+            lists.append((label.split(" · ")[0], rows))
+    return cards, lists
+
+
+def _card_height(draw, it, text_w) -> int:
+    h = 0
+    if it["notice_hours"] > 24:
+        h += 36
+    h += 58 * len(_wrap(draw, it["name"], _font("b", 46), text_w))
+    h += sum(34 * len(_wrap(draw, o["label"], _font("b", 25), text_w - PRICE_W)) + 6 for o in it["options"])
+    h += 34 * len(_wrap(draw, it["description"], _font("r", 24), text_w)) + 14
+    return max(h, PHOTO[1])
+
+
+def render_png() -> bytes:
+    s = shop.settings()
+    cards, lists = _cards_and_lists()
+    probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    col_w = (W - 2 * M - 70) // 2
+    text_w = col_w - PHOTO[0] - 24
+
+    # two columns of cards, row by row
+    heights = [_card_height(probe, c, text_w) for c in cards]
+    rows_h = [max(heights[i:i + 2]) + 50 for i in range(0, len(heights), 2)]
+    list_cols = [[], []]
+    total_rows = sum(len(r) + 2 for _, r in lists)
+    run = 0
+    for head, rows in lists:
+        list_cols[0 if run < total_rows / 2 else 1].append((head, rows))
+        run += len(rows) + 2
+    list_h = max((sum(48 + 44 * len(r) + 24 for _, r in col) for col in list_cols), default=0)
+
+    info = [f"Pre-orders only, at least 24 hours in advance (48 hours for Raan Pulao)."]
+    info.append(f"Collection: {s['kitchen_postcode']}" + (f" ({s['area']})" if s.get("area") else ""))
+    if s["offers_delivery"]:
+        info.append("Delivery: " + shop.delivery_bands_text().replace("\n", " · "))
+    else:
+        info.append("Collection only for now.")
+    info.append(f"WhatsApp: {s['whatsapp']}")
+    info_lines = []
+    for t in info:
+        info_lines += _wrap(probe, t, _font("r", 26), W // 2 - M - 20)
+
+    head_h = 430
+    foot_h = 90 + 44 + 38 * len(info_lines) + 80
+    foot_h = max(foot_h, 90 + 44 + 260 + 60)
+    H = max(MIN_H, head_h + sum(rows_h) + (list_h + 40 if list_h else 0) + foot_h)
+
+    im = Image.new("RGB", (W, H))
+    px = ImageDraw.Draw(im)
+    for y in range(H):                                       # soft cream to blush, like her printed menu
+        t = y / H
+        px.line([(0, y), (W, y)], fill=(int(250 - 12 * t), int(243 - 14 * t), int(233 - 14 * t)))
+    px.rectangle((34, 34, W - 34, H - 34), outline=LINE, width=3)
+    d = ImageDraw.Draw(im)
+
+    def spaced(text, y, font, fill, gap):
+        total = sum(d.textlength(ch, font=font) + gap for ch in text) - gap
+        x = (W - total) / 2
+        for ch in text:
+            d.text((x, y), ch, font=font, fill=fill)
+            x += d.textlength(ch, font=font) + gap
+
+    spaced(s["tagline"].upper().replace(", HOME-COOKED TO ORDER", ""), 120, _font("b", 26), INK, 9)
+    title = s["shop_name"].upper()
+    tf = _font("b", 112)
+    while d.textlength(title, font=tf) > W - 2 * M and tf.size > 50:
+        tf = _font("b", tf.size - 4)
+    d.text(((W - d.textlength(title, font=tf)) / 2, 190), title, font=tf, fill=INK)
+    d.line([(M + 40, 360), (W - M - 40, 360)], fill=INK, width=3)
+    d.polygon([(W / 2, 346), (W / 2 + 14, 360), (W / 2, 374), (W / 2 - 14, 360)], fill=INK)
+
+    y = head_h - 30
+    for r in range(0, len(cards), 2):
+        for k, it in enumerate(cards[r:r + 2]):
+            x0 = M + k * (col_w + 70)
+            yy = y
+            if it["notice_hours"] > 24:
+                d.text((x0, yy), f"Special order · {it['notice_hours']} hours' notice", font=_font("b", 24), fill=RED)
+                yy += 36
+            nf = _font("b", 46)
+            for ln in _wrap(d, it["name"], nf, text_w):
+                d.text((x0, yy), ln, font=nf, fill=RED if it["notice_hours"] > 24 else INK)
+                yy += 58
+            for o in it["options"]:
+                d.text((x0, yy), _price(o["price"]), font=_font("b", 25), fill=RED)
+                for ln in _wrap(d, o["label"], _font("b", 25), text_w - PRICE_W):
+                    d.text((x0 + PRICE_W, yy), ln, font=_font("b", 25), fill=RED)
+                    yy += 34
+                yy += 6
+            yy += 8
+            for ln in _wrap(d, it["description"], _font("r", 24), text_w):
+                d.text((x0, yy), ln, font=_font("r", 24), fill=MUTED)
+                yy += 34
+            ph = _rounded_photo(it["photo"], PHOTO)
+            im.paste(ph, (x0 + col_w - PHOTO[0], y + 4), ph)
+        y += rows_h[r // 2]
+
+    if lists:
+        for ci, col in enumerate(list_cols):
+            x0 = M + ci * (col_w + 70)
+            yy = y
+            for head, rows in col:
+                d.text((x0, yy), head, font=_font("i", 40), fill=INK)
+                yy += 60
+                for name, price in rows:
+                    lines = _wrap(d, name, _font("r", 28), col_w - 190)
+                    for ln in lines:
+                        d.text((x0 + 24, yy), ln, font=_font("r", 28), fill=INK)
+                        yy += 36
+                    yy -= 36 * len(lines)
+                    d.text((x0 + col_w - d.textlength(price, font=_font("b", 28)), yy), price, font=_font("b", 28), fill=RED)
+                    yy += 44 + 36 * (len(lines) - 1) - 6 + 6
+                yy += 24
+        y += list_h + 40
+
+    fy = H - foot_h
+    d.line([(M + 40, fy), (W - M - 40, fy)], fill=INK, width=3)
+    d.text((M, fy + 40), "Orders", font=_font("b", 40), fill=INK)
+    yy = fy + 100
+    for ln in info_lines:
+        d.text((M, yy), ln, font=_font("r", 26), fill=INK)
+        yy += 38
+    rx = W // 2 + 70
+    d.text((rx, fy + 40), "Order online", font=_font("b", 40), fill=INK)
+    qr = Image.open(io.BytesIO(qr_png(scale=8))).convert("RGB").resize((230, 230), Image.NEAREST)
+    im.paste(qr, (rx, fy + 100))
+    d.text((rx + 260, fy + 110), "Scan to see the menu", font=_font("b", 26), fill=INK)
+    d.text((rx + 260, fy + 148), "and order online", font=_font("b", 26), fill=INK)
+    d.text((rx + 260, fy + 205), f"@{s['instagram']}", font=_font("b", 30), fill=RED)
+    d.text((rx + 260, fy + 246), "Instagram & TikTok", font=_font("r", 24), fill=MUTED)
+    out = io.BytesIO()
+    im.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def render_pdf() -> bytes:
+    """The same image on one page: A4 when it fits, otherwise a page of the same width and the right height."""
+    png = render_png()
+    w, h = Image.open(io.BytesIO(png)).size
+    pw = A4[0]
+    ph = pw * h / w
+    buf = io.BytesIO()
+    c = pdf_canvas.Canvas(buf, pagesize=(pw, max(ph, A4[1])), pageCompression=1)
+    c.setTitle(f"{shop.setting('shop_name')} menu")
+    c.drawImage(ImageReader(io.BytesIO(png)), 0, max(ph, A4[1]) - ph, width=pw, height=ph)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def poster_pdf() -> bytes:
+    """A4 'scan to order' sheet with a big QR code, to print and put on a counter, window or flyer."""
+    s = shop.settings()
+    buf = io.BytesIO()
+    c = pdf_canvas.Canvas(buf, pagesize=A4)
+    c.setTitle(f"{s['shop_name']} QR code")
+    pw, ph = A4
+    c.setFillColorRGB(0.97, 0.95, 0.91)
+    c.rect(0, 0, pw, ph, fill=1, stroke=0)
+    c.setFillColorRGB(0.0, 0.28, 0.24)
+    c.setFont("Helvetica-Bold", 34)
+    c.drawCentredString(pw / 2, ph - 120, s["shop_name"])
+    c.setFont("Helvetica", 16)
+    c.drawCentredString(pw / 2, ph - 150, s["tagline"])
+    c.setFont("Helvetica-Bold", 28)
+    c.drawCentredString(pw / 2, ph - 230, "Scan to see our menu and order")
+    qr = ImageReader(io.BytesIO(qr_png(scale=16)))
+    c.drawImage(qr, pw / 2 - 190, ph - 660, width=380, height=380)
+    c.setFont("Helvetica", 15)
+    c.setFillColorRGB(0.1, 0.1, 0.1)
+    c.drawCentredString(pw / 2, ph - 700, public_url())
+    c.setFont("Helvetica", 14)
+    line = "Pre-orders, 24 hours' notice. " + (f"Delivery over {shop.money(shop.delivery_minimum())}; collection has no minimum." if s["offers_delivery"] and shop.delivery_minimum() else "Collection has no minimum order.")
+    c.drawCentredString(pw / 2, ph - 740, line)
+    c.drawCentredString(pw / 2, ph - 765, f"WhatsApp {s['whatsapp']} · Instagram @{s['instagram']}")
+    c.showPage()
+    c.save()
+    return buf.getvalue()

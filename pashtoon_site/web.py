@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import accounts, agent, backup, config, db, llm, menu_data, messages, meta, notify, payments, reports, shop, tasks, tiffin
+from . import accounts, agent, backup, config, db, llm, menu_data, menu_image, messages, meta, notify, payments, reports, shop, tasks, tiffin
 from . import partners as partners_mod
 from .shop import ShopError
 
@@ -70,9 +70,14 @@ def is_kitchen(request: Request) -> bool:
     return is_owner(request) or bool(request.session.get("kitchen"))
 
 
+PASSWORD_PATHS = ("/owner/password", "/owner/settings/password", "/owner/logout")
+
+
 def need_owner(request: Request) -> None:
     if not is_owner(request):
         raise HTTPException(303, headers={"Location": "/owner/login?next=" + urlquote(request.url.path)})
+    if db.get_setting("owner_must_change_password") and request.url.path not in PASSWORD_PATHS:
+        raise HTTPException(303, headers={"Location": "/owner/password"})      # temporary password: choose your own first
 
 
 def path_is_private(path: str) -> bool:
@@ -172,8 +177,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db.use(db_path)
     db.init()
     shop.install()
+    if config.OWNER_EMAIL and not db.get_setting("owner_login_email"):
+        db.set_setting("owner_login_email", config.OWNER_EMAIL)
+        if not db.get_setting("owner_email"):
+            db.set_setting("owner_email", config.OWNER_EMAIL)       # alerts go here until she picks another
     if config.OWNER_PASSWORD and not db.get_setting("owner_password_hash"):
         db.set_setting("owner_password_hash", bcrypt.hashpw(config.OWNER_PASSWORD.encode(), bcrypt.gensalt()).decode())
+        db.set_setting("owner_must_change_password", config.OWNER_MUST_CHANGE)
 
     tasks.start()
     app = FastAPI(title="Pakhtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
@@ -419,6 +429,58 @@ def create_app(db_path: str | None = None) -> FastAPI:
         tasks.add_task(_handle_meta, fresh)      # reply after answering Meta, so it doesn't time out and retry
         return {"ok": True}
 
+
+    # ------------------------------------------------------------ one-page menu, QR code and menu image
+
+    def _file(data: bytes, media_type: str, name: str, request: Request) -> Response:
+        headers = {"Cache-Control": "no-store"}
+        if request.query_params.get("download"):
+            headers["Content-Disposition"] = f'attachment; filename="{name}"'
+        return Response(data, media_type=media_type, headers=headers)
+
+    @app.get("/m", response_class=HTMLResponse)
+    def one_page_menu(request: Request):
+        """The page the QR code points to: the whole menu on one page, with ordering."""
+        return render(request, "public/qrmenu.html", sections=shop.menu_by_category(), tiffin_plans=tiffin.plans(),
+                      min_delivery=shop.delivery_minimum())
+
+    def _limited(request: Request) -> None:
+        if not allow(f"img:{ip(request)}", 40, 3600):
+            raise HTTPException(429, "Too many requests. Please try again later.")
+
+    @app.get("/m/qr.png")
+    async def qr_png_file(request: Request):
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.qr_png), "image/png", "pakhtoon-flavours-menu-qr.png", request)
+
+    @app.get("/m/qr.svg")
+    async def qr_svg_file(request: Request):
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.qr_svg), "image/svg+xml", "pakhtoon-flavours-menu-qr.svg", request)
+
+    @app.get("/menu.png")
+    async def menu_png_file(request: Request):
+        """The current menu as a shareable picture, drawn fresh each time so it always has the latest dishes and prices."""
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.render_png), "image/png", "pakhtoon-flavours-menu.png", request)
+
+    @app.get("/menu.pdf")
+    async def menu_pdf_file(request: Request):
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.render_pdf), "application/pdf", "pakhtoon-flavours-menu.pdf", request)
+
+    @app.get("/owner/qr-poster.pdf")
+    async def qr_poster(request: Request):
+        need_owner(request)
+        return _file(await run_in_threadpool(menu_image.poster_pdf), "application/pdf", "pakhtoon-flavours-qr-poster.pdf", request)
+
+    @app.get("/owner/share", response_class=HTMLResponse)
+    def share_page(request: Request):
+        need_owner(request)
+        url = menu_image.public_url()
+        return render(request, "owner/share.html", menu_url=url, local=any(h in url for h in ("localhost", "127.0.0.1")),
+                      stamp=int(time.time()))
+
     # ------------------------------------------------------------ owner: login
 
     @app.get("/owner/login", response_class=HTMLResponse)
@@ -426,16 +488,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return render(request, "owner/login.html", has_password=bool(db.get_setting("owner_password_hash")))
 
     @app.post("/owner/login")
-    async def login(request: Request, password: str = Form(""), next_: str = Form("/owner", alias="next")):
+    async def login(request: Request, password: str = Form(""), email: str = Form(""), next_: str = Form("/owner", alias="next")):
         await check_csrf(request)
         stored = db.get_setting("owner_password_hash")
         if not allow(f"login:{ip(request)}", 10, 900):
             return render(request, "owner/login.html", has_password=True, error="Too many tries. Wait 15 minutes.")
-        if not stored or not bcrypt.checkpw(password.encode(), stored.encode()):
-            return render(request, "owner/login.html", has_password=bool(stored), error="That password isn't right.")
+        owner_email = (db.get_setting("owner_login_email") or "").strip().lower()
+        email_ok = not owner_email or secrets.compare_digest(email.strip().lower(), owner_email)
+        pw_ok = bool(stored) and bcrypt.checkpw(password.encode(), stored.encode())
+        if not (pw_ok and email_ok):
+            return render(request, "owner/login.html", has_password=bool(stored), error="That email or password isn't right.")
         request.session.clear()
         request.session["owner"] = True
+        if db.get_setting("owner_must_change_password"):
+            return RedirectResponse("/owner/password", status_code=303)
         return RedirectResponse(next_ if next_.startswith("/owner") else "/owner", status_code=303)
+
+    @app.get("/owner/password", response_class=HTMLResponse)
+    def password_page(request: Request):
+        need_owner(request)
+        return render(request, "owner/password.html", forced=bool(db.get_setting("owner_must_change_password")))
 
     @app.post("/owner/logout")
     async def logout(request: Request):
@@ -863,13 +935,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
             db.set_setting("slot_minutes", max(5, int(f.get("slot_minutes") or 30)))
             db.set_setting("daily_order_limit", max(0, int(f.get("daily_order_limit") or 0)))
             db.set_setting("max_delivery_miles", max(0.0, _float(f.get("max_delivery_miles"), 0)))
+            db.set_setting("delivery_minimum", max(0.0, _float(f.get("delivery_minimum"), 0) or 0))
             bands = []
             for i in range(3):
                 fee = _float(f.get(f"band_fee_{i}"))
                 if fee is None:
                     continue
                 upto = _float(f.get(f"band_miles_{i}"))
-                bands.append([upto, fee, _float(f.get(f"band_min_{i}"), 0) or 0])
+                bands.append([upto, fee, 0])
             if bands:
                 bands.sort(key=lambda b: (b[0] is None, b[0] or 0))
                 db.set_setting("delivery_bands", bands)
@@ -878,16 +951,27 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return back("/owner/settings", "Settings saved.")
 
     @app.post("/owner/settings/password")
-    async def change_password(request: Request, current: str = Form(""), new: str = Form("")):
+    async def change_password(request: Request, current: str = Form(""), new: str = Form(""), confirm: str = Form(None),
+                              from_: str = Form("/owner/settings", alias="from")):
         need_owner(request)
         await check_csrf(request)
+        page = "/owner/password" if from_ == "/owner/password" else "/owner/settings"
         stored = db.get_setting("owner_password_hash")
+        if not allow(f"pw:{ip(request)}", 10, 900):
+            return back(page, error="Too many tries. Wait 15 minutes.")
         if stored and not bcrypt.checkpw(current.encode(), stored.encode()):
-            return back("/owner/settings", error="Your current password isn't right.")
+            return back(page, error="Your current password isn't right.")
         if len(new) < 8:
-            return back("/owner/settings", error="Use at least 8 characters for the new password.")
+            return back(page, error="Use at least 8 characters for the new password.")
+        if confirm is not None and confirm != new:
+            return back(page, error="The two new passwords don't match.")
+        if new == current:
+            return back(page, error="Choose a password different from the current one.")
         db.set_setting("owner_password_hash", bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode())
-        return back("/owner/settings", "Password changed.")
+        if db.get_setting("owner_must_change_password"):
+            db.set_setting("owner_must_change_password", False)
+            return back("/owner", "Password changed. Welcome!")
+        return back(page, "Password changed.")
 
     @app.post("/owner/settings/new-links")
     async def new_links(request: Request):
