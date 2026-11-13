@@ -19,7 +19,7 @@
         <form method="post" action="/owner/calendar/close"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="day" value="{{ d.date }}"><input type="hidden" name="month" value="{{ request.query_params.get('month', '') }}">
           <button class="closebtn" title="{{ 'Open this day for orders' if d.closed else 'Close this day for orders' }}">{{ 'closed · reopen' if d.closed else 'close' }}</button></form></div>
       {% for o in d.orders[:4] %}<a class="o" href="/owner/orders/{{ o.id }}" title="#{{ o.id }} {{ o.customer_name }} {{ money(o.total) }}">{{ o.time }} {{ o.customer_name.split()[0] }}</a>{% endfor %}
-      {% if d.orders|length > 4 %}<a class="o" href="/owner/orders?search=" style="background:var(--lime)">+{{ d.orders|length - 4 }} more</a>{% endif %}
+      {% if d.orders|length > 4 %}<a class="o" href="/owner/orders?search=" style="background:var(--sand)">+{{ d.orders|length - 4 }} more</a>{% endif %}
     </td>{% endfor %}</tr>{% endfor %}</tbody>
 </table></div>
 <div class="card sage" style="margin-top:24px">
