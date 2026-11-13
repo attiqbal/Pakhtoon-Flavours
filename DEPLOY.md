@@ -24,6 +24,7 @@ Deploy the Dockerfile, add a **persistent disk mounted at `/data`**, set the env
 |---|---|
 | `PASHTOON_BASE_URL` | The public address (https). Used in links, Stripe and Meta callbacks. |
 | `OWNER_EMAIL`, `OWNER_PASSWORD` | Optional. The owner login is created automatically on first start (see README); set these before the first start only if you want a different email or first password. |
+| `RESET_OWNER_LOGIN` | Only if the owner cannot sign in (for example the site was first started with another password, which is kept on later starts). Set it to any new value, such as today's date, and restart: the login goes back to the owner email and the starter password, once. The same value on later restarts does nothing, so it never undoes a password she chose. Remove it afterwards if you like. |
 | `SESSION_SECRET` | Long random string so logins survive restarts. |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` + `AI_PROVIDER=openai` | The assistant. |
 | `SMTP_HOST/PORT/USER/PASSWORD/FROM` | Email alerts and the weekly emailed backup. |

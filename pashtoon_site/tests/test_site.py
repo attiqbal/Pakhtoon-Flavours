@@ -1045,6 +1045,40 @@ def test_owner_is_created_on_first_start_with_starter_password(tmp_path, monkeyp
     assert db.get_setting("owner_login_email") == EMAIL and bcrypt.checkpw(menu_data.STARTER_PASSWORD.encode(), db.get_setting("owner_password_hash").encode())
 
 
+def test_existing_database_with_an_unusable_owner_login_can_be_reset_once(tmp_path, monkeypatch):
+    """A site that was first started with a different password (OWNER_PASSWORD in .env) keeps it. RESET_OWNER_LOGIN puts
+    the starter password back one time, and never undoes a password chosen after that."""
+    import bcrypt
+    from pashtoon_site import menu_data
+    monkeypatch.setattr(config, "OWNER_EMAIL", "")
+    monkeypatch.setattr(config, "OWNER_PASSWORD", "old-env-password-1")
+    monkeypatch.setattr(config, "RESET_OWNER_LOGIN", "")
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path / "u"))
+    monkeypatch.setattr(config, "BACKGROUND", False)
+    path = str(tmp_path / "live.db")
+
+    def can_sign_in(password, email=EMAIL):
+        web._hits.clear()
+        with TestClient(web.create_app(path), follow_redirects=False) as c:
+            r = c.post("/owner/login", data={"csrf": csrf(c, "/owner/login"), "email": email, "password": password, "next": "/owner"})
+        return r.status_code == 303 and r.headers["location"] == "/owner"
+
+    assert can_sign_in("old-env-password-1")                                                                  # first start used the .env password
+    db.set_setting("owner_login_email", "someone-else@example.com")                                          # and an email that is not hers
+    monkeypatch.setattr(config, "OWNER_PASSWORD", "")
+    assert not can_sign_in(menu_data.STARTER_PASSWORD)                                                        # restarting alone changes nothing: the reported bug
+    monkeypatch.setattr(config, "RESET_OWNER_LOGIN", "2026-11-13")
+    assert can_sign_in(menu_data.STARTER_PASSWORD)                                                            # reset: starter password, her email
+    assert db.get_setting("owner_login_email") == EMAIL and db.get_setting("owner_starter_password") is True
+    assert not can_sign_in("old-env-password-1")
+    db.set_setting("owner_password_hash", bcrypt.hashpw(b"her-own-pass-22", bcrypt.gensalt()).decode())     # she picks her own
+    db.set_setting("owner_starter_password", False)
+    assert can_sign_in("her-own-pass-22")                                                                     # same value on a restart: left alone
+    monkeypatch.setattr(config, "RESET_OWNER_LOGIN", "2026-11-20")
+    assert can_sign_in(menu_data.STARTER_PASSWORD)                                                            # a new value resets again
+
+
 # ---------------------------------------------------------------- Google Calendar (Google is faked, no network)
 
 class FakeGoogle:
