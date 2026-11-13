@@ -15,6 +15,7 @@ from datetime import date
 from pashtoon_site import agent, config, db, geo, meta, payments, shop, web
 
 PASSWORD = "kitchen-secret-1"
+EMAIL = "aarzuehtishaam@gmail.com"
 POSTCODES = {"OL7 9TG": (53.4875, -2.1029), "OL6 6AA": (53.4930, -2.0920), "M1 1AE": (53.4794, -2.2453), "WA1 1AA": (53.3900, -2.5900)}
 
 
@@ -41,7 +42,7 @@ def csrf(c, path="/"):
 
 
 def login(c):
-    r = c.post("/owner/login", data={"password": PASSWORD, "csrf": csrf(c, "/owner/login"), "next": "/owner"})
+    r = c.post("/owner/login", data={"email": EMAIL, "password": PASSWORD, "csrf": csrf(c, "/owner/login"), "next": "/owner"})
     assert r.status_code == 303 and r.headers["location"] == "/owner"
 
 
@@ -65,7 +66,7 @@ def checkout(c, items, **kw):
 def test_real_menu_loaded_and_public_pages(client):
     names = [i["name"] for i in shop.menu()]
     for dish in ["Dam Pukh", "Painda (Sohbat)", "Bannu Beef Pulao", "Namkeen Gosht", "Peshawari Kebab", "Peshawari Karahi",
-                 "Peshawari Raan Pulao", "Tandoori Nan", "Kheer"]:
+                 "Peshawari Raan Pulao", "Tandoori Nan", "Chicken Tikka"]:
         assert dish in names
     assert shop.find_option("Dam Pukh")["price"] == 40       # family portion only, no per-person sizes
     assert [len(i["options"]) for i in shop.menu() if i["slug"] in ("dampukh", "painda", "pulao", "raan")] == [1, 1, 1, 1]
@@ -79,35 +80,75 @@ def test_real_menu_loaded_and_public_pages(client):
 
 
 def test_install_is_idempotent(client):
-    shop.update_price(opt("Kheer"), 8)
+    shop.update_price(opt("Chicken Tikka"), 8)
     shop.install()
-    assert shop.find_option("Kheer")["price"] == 8
-    assert db.q1("SELECT COUNT(*) n FROM menu_items")["n"] == 14
+    assert shop.find_option("Chicken Tikka")["price"] == 8
+    assert db.q1("SELECT COUNT(*) n FROM menu_items")["n"] == 13
 
 
 # ---------------------------------------------------------------- ordering rules
 
-def test_quote_and_delivery_bands(client):
+def test_quote_and_delivery_minimum(client):
     with pytest.raises(shop.ShopError, match="only doing collection"):    # collection only by default
         shop.delivery_quote("OL6 6AA")
     db.set_setting("offers_delivery", True)
-    lines = [{"option_id": opt("Dam Pukh"), "qty": 1}, {"option_id": opt("Nan"), "qty": 2}]
-    q = shop.quote(lines, "collection", d=day(), t="18:00")
+    lines = [{"option_id": opt("Dam Pukh"), "qty": 1}, {"option_id": opt("Nan"), "qty": 2}]       # £46 of food
+    q = shop.quote(lines, "collection", d=day(), t="18:00")        # collection has no minimum
     assert q["food_total"] == 46 and q["total"] == 46
-    near = shop.quote(lines, "delivery", "OL6 6AA", day(), "18:00")
-    assert near["delivery_fee"] == 3.99 and near["total"] == 49.99
-    mid = shop.quote(lines, "delivery", "M1 1AE", day(), "18:00")     # about 6 miles
-    assert mid["delivery_fee"] == 5.99
-    with pytest.raises(shop.ShopError, match="minimum order of £50"):   # over 6 miles needs £50 of food
-        shop.quote(lines, "delivery", "WA1 1AA", day(), "18:00")
+    small = [{"option_id": opt("Nan"), "qty": 1}]
+    assert shop.quote(small, "collection", d=day(), t="18:00")["total"] == 3
+    for pc in ("OL6 6AA", "M1 1AE", "WA1 1AA"):                     # delivery needs £50 at every distance
+        with pytest.raises(shop.ShopError, match="minimum order of £50"):
+            shop.quote(lines, "delivery", pc, day(), "18:00")
+    big = lines + [{"option_id": opt("Nan"), "qty": 2}]            # £52
+    assert shop.quote(big, "delivery", "OL6 6AA", day(), "18:00")["delivery_fee"] == 3.99
+    assert shop.quote(big, "delivery", "M1 1AE", day(), "18:00")["delivery_fee"] == 5.99
     far = shop.quote(lines * 2, "delivery", "WA1 1AA", day(), "18:00")
     assert far["delivery_fee"] == 7.99 and far["food_total"] == 92
+    exact = [{"option_id": opt("Dam Pukh"), "qty": 1}, {"option_id": opt("Nan"), "qty": 1}, {"option_id": opt("Fresh Chutney"), "qty": 2},
+             {"option_id": opt("Fresh Salad"), "qty": 1}]           # 40 + 3 + 4 + 2 = 49, one short
+    with pytest.raises(shop.ShopError, match="minimum"):
+        shop.quote(exact, "delivery", "OL6 6AA", day(), "18:00")
+    exact[2]["qty"] = 3                                             # 51
+    assert shop.quote(exact, "delivery", "OL6 6AA", day(), "18:00")["food_total"] == 51
+    db.set_setting("delivery_minimum", 0)                           # she can switch it off
+    assert shop.quote(small, "delivery", "OL6 6AA", day(), "18:00")["delivery_fee"] == 3.99
     with pytest.raises(shop.ShopError, match="couldn't find"):
         shop.quote(lines, "delivery", "ZZ9 9ZZ", day(), "18:00")
 
 
+def test_delivery_minimum_at_checkout_and_in_ui(client):
+    db.set_setting("offers_delivery", True)
+    small = [{"option_id": opt("Dam Pukh"), "qty": 1}]
+    r = checkout(client, small, fulfilment="delivery", address="1 High Street, Ashton", postcode="OL6 6AA")
+    assert r.status_code == 200 and "minimum order of £50" in r.text
+    assert db.q1("SELECT COUNT(*) n FROM orders")["n"] == 0
+    assert checkout(client, small).status_code == 303               # same basket for collection is fine
+    r = client.post("/api/quote", json={"items": [{"option_id": opt("Dam Pukh"), "qty": 1}], "fulfilment": "delivery", "postcode": "OL6 6AA"})
+    assert r.json()["ok"] is False and "£50" in r.json()["error"]
+    assert "Delivery minimum order: £50.00" in client.get("/checkout").text
+    assert "minimum" in client.get("/m").text.lower()
+
+
+def test_kheer_is_gone(client):
+    assert "Kheer" not in [i["name"] for i in shop.menu(include_hidden=True)]
+    assert "Kheer" not in client.get("/menu").text and "Kheer" not in client.get("/m").text and "kheer" not in client.get("/").text.lower()
+    # a site that still has Kheer (and an old per-band minimum) is cleaned up once, orders keep their history
+    iid = db.execute("INSERT INTO menu_items(slug,name,category,description,sort) VALUES('kheer','Kheer','dessert','x',99)")
+    oid = db.execute("INSERT INTO menu_options(item_id,label,price) VALUES(?,?,?)", (iid, "Per serving", 7.5))
+    db.set_setting("promo_item_id", iid)
+    o = shop.place_order([{"option_id": oid, "qty": 1}], "A", "07700900001", "collection", day(2), "18:00", "cash")
+    db.set_setting("kheer_removed", False)
+    db.set_setting("rules_v1", False)
+    db.set_setting("delivery_bands", [[3, 3.99, 0], [None, 7.99, 50]])
+    shop.install()
+    assert not db.q1("SELECT id FROM menu_items WHERE slug='kheer'") and not db.q("SELECT id FROM menu_options WHERE id=?", (oid,))
+    assert shop.setting("promo_item_id") == 0 and shop.get_order(o["id"])["items"][0]["dish"] == "Kheer"
+    assert shop.setting("delivery_minimum") == 50 and shop.setting("delivery_bands") == [[3, 3.99, 0], [None, 7.99, 0]]
+
+
 def test_notice_closed_days_and_daily_limit(client):
-    lines = [{"option_id": opt("Kheer"), "qty": 1}]
+    lines = [{"option_id": opt("Chicken Tikka"), "qty": 1}]
     with pytest.raises(shop.ShopError, match="24 hours"):
         shop.quote(lines, "collection", d=shop.today(), t="23:59")
     with pytest.raises(shop.ShopError, match="48 hours"):
@@ -126,12 +167,12 @@ def test_notice_closed_days_and_daily_limit(client):
 def test_checkout_tracking_payment_and_cancel(client):
     db.set_setting("pay_bank", True)
     db.set_setting("offers_delivery", True)
-    r = checkout(client, [{"option_id": opt("Namkeen", "half"), "qty": 1}, {"option_id": opt("Nan"), "qty": 3}],
+    r = checkout(client, [{"option_id": opt("Namkeen", "1kg"), "qty": 1}, {"option_id": opt("Nan"), "qty": 4}],
                  fulfilment="delivery", address="12 Park Road, Ashton", postcode="ol66aa", date=day(5), payment="bank")
     assert r.status_code == 303, r.text[:500]
     code = r.headers["location"].split("/o/")[1].split("?")[0]
     page = client.get(f"/o/{code}?new=1").text
-    assert "Thank you" in page and "£36.99" in page and "Naan: yes, 3" in page and "cancellation policy" in page
+    assert "Thank you" in page and "£55.99" in page and "Naan: yes, 4" in page and "cancellation policy" in page
     o = shop.get_order_by_code(code)
     assert o["postcode"] == "OL6 6AA" and o["delivery_fee"] == 3.99 and o["status"] == "confirmed"
     assert any("New order" in a["text"] for a in shop.alerts())
@@ -142,16 +183,16 @@ def test_checkout_tracking_payment_and_cancel(client):
 
 
 def test_checkout_errors_are_shown_not_crashes(client):
-    r = checkout(client, [{"option_id": opt("Kheer"), "qty": 1}], phone="123")
+    r = checkout(client, [{"option_id": opt("Chicken Tikka"), "qty": 1}], phone="123")
     assert r.status_code == 200 and "mobile number" in r.text
     r = checkout(client, [], name="X")
     assert "basket is empty" in r.text
-    r = checkout(client, [{"option_id": opt("Kheer"), "qty": 1}], agree="")
+    r = checkout(client, [{"option_id": opt("Chicken Tikka"), "qty": 1}], agree="")
     assert "cancellation policy" in r.text
 
 
 def test_late_cancel_blocked(client):
-    o = shop.place_order([{"option_id": opt("Kheer"), "qty": 1}], "A", "07700900001", "collection", day(2), "18:00", "cash")
+    o = shop.place_order([{"option_id": opt("Chicken Tikka"), "qty": 1}], "A", "07700900001", "collection", day(2), "18:00", "cash")
     db.execute("UPDATE orders SET date=?, time='23:59' WHERE id=?", (shop.today(), o["id"]))
     with pytest.raises(shop.ShopError, match="24 hours"):
         shop.customer_cancel(o["id"])
@@ -232,20 +273,20 @@ def test_recipes_stock_shopping_writeoff_and_money(client):
 
 def test_menu_edit_and_settings(client):
     login(client)
-    it = shop.option(opt("Kheer"))
-    r = client.post(f"/owner/menu/{it['item_id']}", data={"csrf": csrf(client, "/owner/menu"), "name": "Kheer", "category": "dessert",
+    it = shop.option(opt("Chicken Tikka"))
+    r = client.post(f"/owner/menu/{it['item_id']}", data={"csrf": csrf(client, "/owner/menu"), "name": "Chicken Tikka", "category": "dessert",
                                                            "description": "Rice pudding", "notice_hours": "24", "available": "1",
                                                            "opt_id_0": str(it["id"]), "opt_label_0": "Per serving", "opt_price_0": "8.00",
                                                            "opt_label_1": "Family bowl", "opt_price_1": "30", f"recipe_{it['id']}": "100 ml milk\n20 g rice"})
     assert r.status_code == 303 and "error" not in r.headers["location"]
-    assert shop.find_option("Kheer", "serving")["price"] == 8 and shop.find_option("Kheer", "family")["price"] == 30
+    assert shop.find_option("Chicken Tikka", "serving")["price"] == 8 and shop.find_option("Chicken Tikka", "family")["price"] == 30
     assert shop.recipe_text(it["id"]) == "100 ml milk\n20 g rice"
     r = client.post("/owner/settings", data={"csrf": csrf(client, "/owner/settings"), "accepting_orders": "1", "offers_delivery": "1",
                                               "offers_collection": "1", "pay_cash": "1", "slot_start": "13:00", "slot_end": "20:00", "slot_minutes": "30",
                                               "daily_order_limit": "8", "bank_details": "Sort 00-00-00", "band_miles_0": "3", "band_fee_0": "4.50",
-                                              "band_fee_1": "8", "band_min_1": "60", "max_delivery_miles": "10", "shop_name": "Pakhtoon Flavours"})
+                                              "band_fee_1": "8", "delivery_minimum": "60", "max_delivery_miles": "10", "shop_name": "Pakhtoon Flavours"})
     assert r.status_code == 303
-    assert shop.setting("daily_order_limit") == 8 and shop.setting("delivery_bands") == [[3, 4.5, 0], [None, 8, 60]]
+    assert shop.setting("daily_order_limit") == 8 and shop.setting("delivery_bands") == [[3, 4.5, 0], [None, 8, 0]] and shop.setting("delivery_minimum") == 60
     assert shop.time_slots()[0] == "13:00"
 
 
@@ -320,12 +361,12 @@ def test_ai_paused_when_owner_takes_over(client):
 
 
 def test_order_status_tool_checks_phone(client):
-    o = shop.place_order([{"option_id": opt("Kheer"), "qty": 1}], "A", "07700900008", "collection", day(), "18:00", "cash")
+    o = shop.place_order([{"option_id": opt("Chicken Tikka"), "qty": 1}], "A", "07700900008", "collection", day(), "18:00", "cash")
     ctx = agent.Ctx("customer", None)
     out, err = agent.run_tool(ctx, "order_status", {"order_id": o["id"], "phone": "07000000000"})
     assert err and "don't match" in out
     out, err = agent.run_tool(ctx, "order_status", {"order_id": o["id"], "phone": "+44 7700 900008"})
-    assert not err and "Kheer" in out
+    assert not err and "Chicken Tikka" in out
     out, err = agent.run_tool(ctx, "update_price", {"option_id": 1, "price": 1})
     assert err                                                          # customers can't use owner tools
 
@@ -382,7 +423,7 @@ def test_instagram_and_messenger_parse_and_reply(client, monkeypatch):
 def test_payment_methods_follow_settings(client):
     page = client.get("/checkout").text
     assert 'value="cash"' in page and 'value="bank"' not in page and 'value="card"' not in page   # cash only to start
-    r = checkout(client, [{"option_id": opt("Kheer"), "qty": 1}], payment="bank")
+    r = checkout(client, [{"option_id": opt("Chicken Tikka"), "qty": 1}], payment="bank")
     assert r.status_code == 200 and "Choose how you" in r.text
 
 
@@ -392,10 +433,10 @@ def test_card_payment_with_stripe(client, monkeypatch):
     assert 'value="card"' in client.get("/checkout").text
     made = []
     monkeypatch.setattr(payments, "create_checkout", lambda o: made.append(o["id"]) or "https://checkout.stripe.com/c/pay/cs_test_1")
-    r = checkout(client, [{"option_id": opt("Kheer"), "qty": 2}], payment="card")
+    r = checkout(client, [{"option_id": opt("Chicken Tikka"), "qty": 2}], payment="card")
     assert r.status_code == 303 and r.headers["location"].startswith("https://checkout.stripe.com/")
     o = shop.get_order(made[0])
-    assert o["payment_method"] == "card" and o["total"] == 15
+    assert o["payment_method"] == "card" and o["total"] == 28
     monkeypatch.setattr(payments, "paid_order_id", lambda sid: o["id"] if sid == "cs_test_1" else None)
     page = client.get(f"/o/{o['code']}?stripe_session=cs_bogus").text
     assert "Pay now" in page and shop.get_order(o["id"])["payment_status"] == "unpaid"
@@ -610,7 +651,7 @@ def test_tiffin_enquiry_and_dish_video(client):
 
 def test_landing_page_and_phone_layout(client):
     h = client.get("/").text
-    for bit in ("See the menu and order", "Watch it cooked", "Good to know", "application/ld+json", "Taking orders now", 'id="lp-sticky"'):
+    for bit in ("Order now", "Popular dishes", "How to order", "Questions and answers", "application/ld+json", "Open for orders", 'id="lp-sticky"'):
         assert bit in h, bit
     assert shop.earliest_day() and shop.earliest_day() in h
     db.set_setting("accepting_orders", False)
@@ -817,10 +858,10 @@ def test_partner_email_import(client):
     again = client.post(f"/api/partner-orders/email?key={key}", json=body).json()
     assert again["order_id"] == o["id"] and again["duplicate"] is True
     assert client.post(f"/api/partner-orders/email?key={key}", json={"text": "hello", "from": "orders@deliveroo.co.uk"}).status_code == 400
-    r = client.post("/api/partner-orders", json={"partner": "deliveroo", "items": [{"dish": "Kheer", "qty": 1}]}, headers={"X-Partner-Key": key})
+    r = client.post("/api/partner-orders", json={"partner": "deliveroo", "items": [{"dish": "Chicken Tikka", "qty": 1}]}, headers={"X-Partner-Key": key})
     assert r.status_code == 400 and "switched on" in r.json()["error"]
     # form-encoded (what inbound-email services send)
-    r = client.post(f"/api/partner-orders/email?key={key}", data={"subject": "Uber Eats order", "body-plain": "Order #UE-9\n1 x Kheer\nTotal £7.50", "from": "uber"})
+    r = client.post(f"/api/partner-orders/email?key={key}", data={"subject": "Uber Eats order", "body-plain": "Order #UE-9\n1 x Chicken Tikka\nTotal £7.50", "from": "uber"})
     assert r.status_code == 200
 
 
@@ -874,3 +915,257 @@ def test_flyer_update_migrates_an_existing_menu(client):
     item = db.q1("SELECT name, image FROM menu_items WHERE id=?", (pulao,))
     assert item == {"name": "Bannu Beef Pulao", "image": "/media/hers.jpg"}
     assert shop.setting("shop_name") == "Pakhtoon Flavours"
+
+
+# ---------------------------------------------------------------- one-page menu, QR code, menu image
+
+def test_one_page_menu_has_every_dish_and_ordering(client):
+    r = client.get("/m")
+    assert r.status_code == 200
+    for dish in ("Dam Pukh", "Painda (Sohbat)", "Peshawari Raan Pulao", "Tandoori Nan"):
+        assert dish in r.text
+    assert f'data-option="{opt("Dam Pukh")}"' in r.text and "data-add" in r.text         # same basket buttons as /menu
+    assert "no minimum" in r.text
+    db.set_setting("offers_delivery", True)
+    assert "£50.00" in client.get("/m").text
+    shop.update_price(opt("Dam Pukh"), 42)
+    assert "£42.00" in client.get("/m").text
+
+
+def test_qr_codes_point_at_the_menu_page(client, monkeypatch):
+    from pashtoon_site import menu_image
+    monkeypatch.setattr(config, "BASE_URL", "https://pakhtoonflavours.example")
+    assert menu_image.public_url() == "https://pakhtoonflavours.example/m"
+    r = client.get("/m/qr.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert "attachment" in client.get("/m/qr.png?download=1").headers["content-disposition"]
+    svg = client.get("/m/qr.svg")
+    assert svg.status_code == 200 and b"<svg" in svg.content
+    assert client.get("/owner/qr-poster.pdf").status_code == 303            # the printable sheet is for the owner
+    login(client)
+    pdf = client.get("/owner/qr-poster.pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    page = client.get("/owner/share")
+    assert page.status_code == 200 and "pakhtoonflavours.example/m" in page.text and "Generate menu image" in page.text
+
+
+def test_menu_image_png_and_pdf_follow_the_menu(client):
+    import io
+    from PIL import Image
+    a = client.get("/menu.png")
+    assert a.status_code == 200 and a.headers["content-type"] == "image/png"
+    im = Image.open(io.BytesIO(a.content))
+    assert im.size[0] == 1654 and im.size[1] >= 2339
+    shop.update_price(opt("Dam Pukh"), 44)
+    shop.set_available(shop.find_item("Chicken Tikka")["id"], False)
+    b = client.get("/menu.png")
+    assert b.content != a.content                                           # redrawn from the current menu
+    pdf = client.get("/menu.pdf?download=1")
+    assert pdf.content[:4] == b"%PDF" and "attachment" in pdf.headers["content-disposition"]
+    from pashtoon_site import menu_image
+    cards, lists = menu_image._cards_and_lists()
+    text = " ".join(n for _, rows in lists for n, _ in rows) + " ".join(c["name"] for c in cards)
+    assert "Kheer" not in text and "Chicken Tikka" not in text and "Dam Pukh" in text
+
+
+def test_menu_image_rate_limited(client):
+    for _ in range(40):
+        assert client.get("/m/qr.png").status_code == 200
+    assert client.get("/m/qr.png").status_code == 429
+
+
+# ---------------------------------------------------------------- owner account and password change
+
+def test_owner_email_login_and_optional_password_change(client):
+    form = lambda **kw: {"csrf": csrf(client, "/owner/login"), "next": "/owner", **kw}
+    assert "email or password" in client.post("/owner/login", data=form(password=PASSWORD)).text                     # email is needed
+    assert "email or password" in client.post("/owner/login", data=form(password=PASSWORD, email="someone@else.com")).text
+    assert "email or password" in client.post("/owner/login", data=form(password="wrong-password", email=EMAIL)).text
+    r = client.post("/owner/login", data=form(password=PASSWORD, email="  AarzuEhtishaam@gmail.com "))
+    assert r.status_code == 303 and r.headers["location"] == "/owner"                                         # straight in, no forced change
+    assert client.get("/owner/orders").status_code == 200
+    page = client.get("/owner/password")
+    assert page.status_code == 200 and 'href="/owner/password"' in client.get("/owner").text                 # easy to find in the menu
+    tok = csrf(client, "/owner/password")
+    bad = [("wrong", "new-password-1", "new-password-1"), (PASSWORD, "short", "short"), (PASSWORD, "new-password-1", "different-1"),
+           (PASSWORD, PASSWORD, PASSWORD)]
+    for cur, new, conf in bad:
+        r = client.post("/owner/settings/password", data={"csrf": tok, "current": cur, "new": new, "confirm": conf, "from": "/owner/password"})
+        assert r.headers["location"].startswith("/owner/password?error=")
+    r = client.post("/owner/settings/password", data={"csrf": tok, "current": PASSWORD, "new": "my-own-password-9", "confirm": "my-own-password-9", "from": "/owner/password"})
+    assert r.headers["location"].startswith("/owner/password?msg=")
+    client.post("/owner/logout", data={"csrf": csrf(client, "/owner")})
+    assert client.post("/owner/login", data=form(password="my-own-password-9", email=EMAIL)).headers["location"] == "/owner"
+    assert client.post("/owner/login", data=form(password=PASSWORD, email=EMAIL)).status_code == 200          # old one no longer works
+
+
+def test_owner_is_created_on_first_start_with_starter_password(tmp_path, monkeypatch):
+    from pashtoon_site import menu_data
+    monkeypatch.setattr(config, "OWNER_EMAIL", "")
+    monkeypatch.setattr(config, "OWNER_PASSWORD", "")
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path / "u"))
+    monkeypatch.setattr(config, "BACKGROUND", False)
+    web._hits.clear()
+    app = web.create_app(str(tmp_path / "fresh.db"))
+    assert db.get_setting("owner_login_email") == EMAIL and db.get_setting("owner_starter_password") is True
+    assert menu_data.STARTER_PASSWORD not in json.dumps(db.q("SELECT * FROM settings"))                       # only the hash is stored
+    with TestClient(app, follow_redirects=False) as c:
+        data = {"csrf": csrf(c, "/owner/login"), "email": EMAIL, "password": menu_data.STARTER_PASSWORD, "next": "/owner"}
+        assert c.post("/owner/login", data=data).headers["location"] == "/owner"
+        assert "still using the starter password" in c.get("/owner").text                                     # a reminder, not a block
+        tok = csrf(c, "/owner/password")
+        c.post("/owner/settings/password", data={"csrf": tok, "current": menu_data.STARTER_PASSWORD, "new": "her-own-pass-22", "confirm": "her-own-pass-22", "from": "/owner/password"})
+        assert "still using the starter password" not in c.get("/owner").text
+    # starting again never replaces her password or email
+    db.set_setting("owner_login_email", "new@example.com")
+    web.create_app(str(tmp_path / "fresh.db"))
+    assert db.get_setting("owner_login_email") == "new@example.com" and db.get_setting("owner_starter_password") is False
+    stored = db.get_setting("owner_password_hash")
+    import bcrypt
+    assert bcrypt.checkpw(b"her-own-pass-22", stored.encode())
+    # the reset command is for a forgotten password
+    from pashtoon_site import owner_setup
+    assert owner_setup.main() == 0
+    assert db.get_setting("owner_login_email") == EMAIL and bcrypt.checkpw(menu_data.STARTER_PASSWORD.encode(), db.get_setting("owner_password_hash").encode())
+
+
+# ---------------------------------------------------------------- Google Calendar (Google is faked, no network)
+
+class FakeGoogle:
+    """Stands in for httpx. Keeps a dict of events like Google does, including 409 on a reused id."""
+    def __init__(self):
+        self.events, self.calls, self.fail_with = {}, [], None
+
+    def post(self, url, **kw):
+        self.calls.append(("POST", url))
+        if "oauth2.googleapis.com/token" in url:
+            if kw["data"].get("grant_type") == "refresh_token":
+                return FakeResp(200, {"access_token": "at2", "expires_in": 3600})
+            return FakeResp(200, {"access_token": "at1", "refresh_token": "rt1", "expires_in": 3600})
+        return FakeResp(200, {})
+
+    def request(self, method, url, **kw):
+        self.calls.append((method, url))
+        if self.fail_with:
+            return FakeResp(self.fail_with, {"error": "boom"})
+        assert kw["headers"]["Authorization"].startswith("Bearer ")
+        if url.endswith("/calendars"):
+            return FakeResp(200, {"id": "cal123"})
+        body = kw["json"]
+        if method == "POST":
+            if body["id"] in self.events:
+                return FakeResp(409, {})
+            self.events[body["id"]] = body
+        else:
+            self.events[url.rsplit("/", 1)[1]] = body
+        return FakeResp(200, body)
+
+
+class FakeResp:
+    def __init__(self, code, data):
+        self.status_code, self._d, self.content, self.text = code, data, b"x", json.dumps(data)
+
+    def json(self):
+        return self._d
+
+
+@pytest.fixture()
+def google(client, monkeypatch):
+    from pashtoon_site import gcal
+    fake = FakeGoogle()
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_SECRET", "csecret")
+    monkeypatch.setattr(gcal, "SYNC", True)
+    monkeypatch.setattr(gcal.httpx, "post", fake.post)
+    monkeypatch.setattr(gcal.httpx, "request", fake.request)
+    gcal._token.update(value=None, expires=0.0)
+    yield fake
+    gcal._token.update(value=None, expires=0.0)
+
+
+def connect_google(c):
+    login(c)
+    r = c.post("/owner/google/connect", data={"csrf": csrf(c, "/owner/settings")})
+    assert r.status_code == 303 and r.headers["location"].startswith("https://accounts.google.com/")
+    assert "calendar.app.created" in r.headers["location"] and "csecret" not in r.headers["location"]
+    state = re.search(r"state=([^&]+)", r.headers["location"]).group(1)
+    return c.get(f"/owner/google/callback?code=abc&state={state}")
+
+
+def test_google_needs_keys_and_a_matching_state(client, monkeypatch):
+    login(client)
+    r = client.post("/owner/google/connect", data={"csrf": csrf(client, "/owner/settings")})
+    assert "GOOGLE_CLIENT_ID" in r.headers["location"]            # not configured: friendly message, no redirect to Google
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_SECRET", "s")
+    r = client.get("/owner/google/callback?code=abc&state=forged")
+    assert "expired" in r.headers["location"]
+    assert client.get("/owner/google/callback?code=abc&state=x", follow_redirects=False).status_code == 303
+
+
+def test_google_connect_sends_orders_once_and_updates_them(google, client):
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    assert not google.events                                       # not connected yet: nothing sent
+    r = connect_google(client)
+    assert "connected" in r.headers["location"]
+    assert len(google.events) == 1
+    ev = next(iter(google.events.values()))
+    assert ev["id"].startswith("pforder") and "Ayesha Khan" in ev["summary"] and "Karahi" in ev["description"]
+    assert ev["start"]["timeZone"] == "Europe/London" and ev["start"]["dateTime"].endswith("18:00:00")
+    # change the order: same event updated, never a second one
+    oid = shop.list_orders()[0]["id"]
+    shop.set_status(oid, "ready")
+    shop.set_payment(oid, "paid")
+    assert len(google.events) == 1 and "Paid" in next(iter(google.events.values()))["description"]
+    # nothing changed: nothing sent
+    n = len(google.calls)
+    from pashtoon_site import gcal
+    assert gcal.sync_pending() == 0 and len(google.calls) == n
+    # a new order is added by place_order itself
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 2}], time="19:00")
+    assert len(google.events) == 2
+
+
+def test_google_cancelled_order_is_marked_and_unsent_cancelled_is_skipped(google, client):
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    connect_google(client)
+    oid = shop.list_orders()[0]["id"]
+    shop.set_status(oid, "cancelled")
+    ev = next(iter(google.events.values()))
+    assert ev["summary"].startswith("CANCELLED") and ev["transparency"] == "transparent"
+    # an order cancelled before it was ever sent creates no event
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}], time="20:00")
+    o2 = shop.list_orders()[-1]["id"]
+    from pashtoon_site import gcal
+    db.execute("UPDATE orders SET gcal_hash=NULL WHERE id=?", (o2,))
+    db.execute("UPDATE orders SET status='cancelled' WHERE id=?", (o2,))
+    before = len(google.events)
+    gcal.sync_pending()
+    assert len(google.events) == before
+
+
+def test_google_failure_never_blocks_orders_and_retries(google, client):
+    from pashtoon_site import gcal
+    connect_google(client)
+    google.fail_with = 500
+    r = checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    assert r.status_code == 303 and len(shop.list_orders()) == 1   # the order still went through
+    assert db.get_setting("google_error")
+    google.fail_with = None
+    assert gcal.sync_pending() == 1 and len(google.events) == 1 and not db.get_setting("google_error")
+
+
+def test_google_revoked_access_asks_to_reconnect_and_disconnect_clears(google, client, monkeypatch):
+    from pashtoon_site import gcal
+    connect_google(client)
+    gcal._token.update(value=None, expires=0.0)
+    monkeypatch.setattr(gcal.httpx, "post", lambda url, **kw: FakeResp(400, {"error": "invalid_grant"}))
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    assert not gcal.connected() and "Connect Google Calendar again" in db.get_setting("google_error")
+    monkeypatch.setattr(gcal.httpx, "post", google.post)
+    connect_google(client)
+    assert gcal.connected()
+    r = client.post("/owner/google/disconnect", data={"csrf": csrf(client, "/owner/settings")})
+    assert r.status_code == 303 and not gcal.connected()
+    assert "Google Calendar" in client.get("/owner/settings").text

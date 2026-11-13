@@ -8,7 +8,7 @@ assistant that answers customers. It is a standalone app with its own database, 
 ## What it does
 
 **For customers**
-- **Menu and ordering**: her real menu (Dam Pukh, Painda, Bannu Pulao, Namkeen Gosht, Kebab, Karahi, Raan Pulao, extras, Kheer) with her photos and prices. Customers add dishes to a basket, pick a date and time, and choose collection or delivery. Delivery is priced from her bands (£3.99 up to 3 miles, £5.99 for 3 to 6 miles, £7.99 over 6 miles with a £50 minimum).
+- **Menu and ordering**: her real menu (Dam Pukh, Painda, Bannu Pulao, Namkeen Gosht, Kebab, Karahi, Raan Pulao and extras) with her photos and prices. Customers add dishes to a basket, pick a date and time, and choose collection or delivery. Delivery is priced from her bands (£3.99 up to 3 miles, £5.99 for 3 to 6 miles, £7.99 over 6 miles). Delivery has a £50 minimum food order (a setting); collection has no minimum.
 - **Her rules are enforced**: 24 hours' notice (48 for Raan Pulao), cooking hours, closed days, an optional daily order limit, and the 24-hour cancellation policy.
 - **Paying**: cash on collection or delivery to start. Card, Apple Pay and Google Pay through Stripe switch on as soon as a Stripe key is added, and bank transfer is one tick away in Settings.
 - **Order page**: an order number and private tracking link, her own confirmation, payment and cancellation messages word for word, a Pay now button for card orders, and self-service cancellation more than 24 hours ahead.
@@ -28,6 +28,16 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Settings**: taking orders on/off, hours, daily limit, delivery bands, bank details, review link, banner message, AI on/off and name, password, new kitchen/calendar links.
 - **WhatsApp, Instagram and Facebook Messenger (optional)**: the same assistant answers on Meta's apps through one webhook, `/webhook/meta`, and those chats land in Messages too. Settings shows which are connected.
 
+## Share the menu: QR code and menu image
+
+- **`/m`** is the one-page menu the QR code points to. It shows every dish with prices and the same Add buttons and checkout as `/menu`.
+- **Owner > Share menu** has the QR code (PNG, SVG for printers, and a printable A4 sheet) and **Generate menu image**, a PNG or PDF of the menu drawn from the current dishes and prices, in the style of her printed menu. Make it again after any change. Set `PASHTOON_BASE_URL` in `.env` to the live web address first, so the QR code points at the right place.
+- Delivery has a minimum food order (Settings > Delivery minimum, £50 by default). Collection never has one.
+
+## The owner account
+
+The owner login is created automatically the first time the site starts: **aarzuehtishaam@gmail.com** with the starter password **AshtonUnderlyne**. There is nothing to set up. She can change the password any time in the dashboard under **Password** (the dashboard shows a reminder until she does). Because the starter password is written here, she should choose her own as soon as the site is live. If she forgets it, `python -m pashtoon_site.owner_setup` puts the starter password back.
+
 ## On a phone
 
 The whole site is built for phones first. Customers get a landing page with her cooking clips, swipeable dishes and an
@@ -37,15 +47,15 @@ it then opens like an app.
 
 ## Run it
 
-**GitHub Codespaces**: open the repository in a Codespace. It installs everything and runs `start.sh`, which prints the website address and her first password. The site runs on port 8000.
+**GitHub Codespaces**: open the repository in a Codespace. It installs everything and runs `start.sh`, which prints the website address. The site runs on port 8000.
 
 **Your own computer** (Python 3.11 or newer):
 
 ```bash
-bash start.sh          # creates .env with a password, installs, starts on http://localhost:8000
+bash start.sh          # creates .env, installs, starts on http://localhost:8000
 ```
 
-Then open `/owner` and log in with the password the script printed. Change it in Settings.
+Then open `/owner` and log in with the owner email and starter password (see The owner account below).
 
 To switch on the AI assistant, put a Claude API key from console.anthropic.com in `.env` as `ANTHROPIC_API_KEY=...` and run `bash start.sh` again. Everything else works without it.
 

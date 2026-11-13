@@ -2,18 +2,23 @@
 {% block title %}Menu · {{ st.shop_name }}{% endblock %}
 {% block page %}
 <div class="wrap" style="padding-top:40px;padding-bottom:120px">
-  <span class="eyebrow">Pre-order menu · 24 hours' notice</span>
-  <h1>Our menu</h1>
-  {% if partners %}<p class="muted">{% if not st.offers_delivery %}Collection only for now. {% endif %}Also on: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  <span class="eyebrow">Menu</span>
+  <h1>Order from our menu</h1>
+  {% include "public/_order_info.html" %}
+  {% if partners %}<p class="muted small">Also on: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
   {% if not st.accepting_orders %}<div class="alert info">We're not taking new orders right now. You can still look, and chat with us below.</div>{% endif %}
-  <div class="tabs" id="tabs">{% for key, label, items in sections %}<a href="#s-{{ key }}" data-tab="{{ key }}" {% if loop.first %}class="on"{% endif %}>{{ label.split(' · ')[0] }}</a>{% endfor %}</div>
+  <div class="menu-tools">
+    <input type="search" class="menu-search" data-menu-search placeholder="Search dishes, e.g. lamb, pulao, nan" aria-label="Search the menu" autocomplete="off">
+    <div class="tabs chips" id="tabs">{% for key, label, items in sections %}<a href="#s-{{ key }}" data-tab="{{ key }}" {% if loop.first %}class="on"{% endif %}>{{ label.split(' · ')[0] }}</a>{% endfor %}</div>
+  </div>
+  <p class="muted hide" data-menu-empty>No dishes match that. Try another word, or <button type="button" class="link" data-menu-clear>show the whole menu</button>.</p>
 
   {% for key, label, items in sections %}
   <section class="menu-section" id="s-{{ key }}" data-section="{{ key }}">
     <h2>{{ label.split(' · ')[0] }}{% if ' · ' in label %} <span class="thin" style="font-size:.6em">{{ label.split(' · ')[1] }}</span>{% endif %}</h2>
     <div class="cards">
       {% for it in items %}
-      <article class="dish" id="{{ it.slug }}">
+      <article class="dish" id="{{ it.slug }}" data-dish="{{ (it.name ~ ' ' ~ it.description ~ ' ' ~ it.options|map(attribute='label')|join(' '))|lower }}">
         {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
         <div class="media">{% if it.image %}<img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">{% else %}<div class="noimg">{{ it.name }}</div>{% endif %}
           {% if it.video %}<button type="button" class="watch" data-video="{{ it.video }}" data-title="{{ it.name }}" aria-label="Watch {{ it.name }}">▶ Watch</button>{% endif %}</div>

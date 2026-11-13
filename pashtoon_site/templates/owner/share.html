@@ -1,0 +1,31 @@
+{% extends "owner/_layout.html" %}
+{% block title %}Share menu{% endblock %}
+{% block main %}
+<div class="topbar"><div><span class="eyebrow">Menu</span><h1>Share your menu</h1></div></div>
+<p class="muted" style="max-width:720px">Your menu page, a QR code that opens it, and a picture of the menu for WhatsApp and Instagram. All of it is made from your current menu, so after you change a dish or a price, just make the picture again.</p>
+{% if local %}<div class="alert info">This site is running on a test address, so the QR code points to <b>{{ menu_url }}</b>. Once the site is live on your own web address (set <code>PASHTOON_BASE_URL</code> in <code>.env</code>), download the QR code again before you print it.</div>{% endif %}
+<div class="grid two" style="align-items:start;margin-top:20px">
+  <div class="card">
+    <h2>QR code and menu page</h2>
+    <p class="small">Anyone who scans it sees your whole menu on one page and can order straight from it.</p>
+    <div class="row" style="margin-bottom:14px"><input readonly value="{{ menu_url }}" onclick="this.select()" style="flex:1" aria-label="Menu page link"><a class="btn small" href="/m" target="_blank">Open</a></div>
+    <img src="/m/qr.png?v={{ stamp }}" alt="QR code for the menu page" width="220" height="220" style="background:#fff;border-radius:12px;padding:6px;display:block;margin:0 0 14px">
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <a class="btn primary small" href="/m/qr.png?download=1">QR code (PNG)</a>
+      <a class="btn small" href="/m/qr.svg?download=1">QR code (SVG, for printers)</a>
+      <a class="btn small" href="/owner/qr-poster.pdf?download=1">Printable sheet (PDF)</a>
+    </div>
+  </div>
+  <div class="card sage">
+    <h2>Menu picture</h2>
+    <p class="small">Made now from your latest dishes, portions and prices, in the style of your printed menu, with the QR code at the bottom.</p>
+    <img src="/menu.png?v={{ stamp }}" alt="Your current menu as a picture" style="width:100%;max-width:300px;border-radius:10px;display:block;margin:0 0 14px;border:1px solid rgba(0,0,0,.12)">
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <a class="btn primary small" href="/menu.png?download=1">Generate menu image (PNG)</a>
+      <a class="btn small" href="/menu.pdf?download=1">Menu as PDF</a>
+      <a class="btn small" href="/owner/share">Refresh preview</a>
+    </div>
+    <p class="tiny faint" style="margin-top:10px">On a phone: open the PNG, press and hold, then Save to Photos or Share.</p>
+  </div>
+</div>
+{% endblock %}

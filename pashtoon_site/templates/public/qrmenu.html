@@ -1,0 +1,60 @@
+{% extends "public/_base.html" %}
+{% block title %}Menu and order · {{ st.shop_name }}{% endblock %}
+{% block head %}<style>
+.qm{max-width:760px;margin:0 auto;padding:28px 18px 130px}
+.qm h1{font-size:clamp(2rem,8vw,3rem);margin:4px 0 6px}
+.qm .lead{margin:0 0 14px;color:var(--muted,#555)}
+.qsec{scroll-margin-top:150px}
+.qm h2{font-size:1.5rem;margin:30px 0 6px;border-bottom:2px solid currentColor;padding-bottom:4px}
+.qm h2 small{font-weight:400;font-size:.55em;opacity:.75;margin-left:6px}
+.qd{display:grid;grid-template-columns:1fr;gap:4px;padding:14px 0;border-bottom:1px solid rgba(0,0,0,.1)}
+.qd.pic{grid-template-columns:1fr 92px;column-gap:14px}
+.qd .ph{grid-column:2;grid-row:1 / span 3;width:92px;height:92px;object-fit:cover;border-radius:12px}
+.qd h3{margin:0;font-size:1.15rem}
+.qd p{margin:2px 0 6px;font-size:.92rem;color:#5f5a54}
+.qd .opt{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0}
+.qd .lbl{font-size:.95rem}.qd .price{font-weight:700;color:#a3312a}
+.qd .opt-ctrl .btn{padding:6px 16px}
+.qd .opt-ctrl .qty{display:inline-flex;align-items:center;gap:10px}
+.qd .opt-ctrl .qty.hide,.qd .opt-ctrl .add.hide{display:none}
+.qd .opt-ctrl .qty button{width:34px;height:34px;border-radius:50%;border:1px solid rgba(0,0,0,.25);background:#fff;font-size:1.1rem}
+.qm .notice{font-size:.8rem;font-weight:600;color:#a3312a}
+</style>{% endblock %}
+{% block page %}
+<div class="qm">
+  <span class="eyebrow">{{ st.tagline }}</span>
+  <h1>{{ st.shop_name }}</h1>
+  <p class="lead">Our full menu on one page. Add what you like and order here: no sign-up needed.</p>
+  {% include "public/_order_info.html" %}
+  {% if not st.accepting_orders %}<div class="alert info">We're not taking new orders right now. You can still look at the menu.</div>{% endif %}
+  <div class="menu-tools">
+    <input type="search" class="menu-search" data-menu-search placeholder="Search dishes, e.g. lamb, pulao, nan" aria-label="Search the menu" autocomplete="off">
+    <div class="tabs chips" id="tabs">{% for key, label, items in sections %}<a href="#s-{{ key }}" data-tab="{{ key }}" {% if loop.first %}class="on"{% endif %}>{{ label.split(' · ')[0] }}</a>{% endfor %}</div>
+  </div>
+  <p class="muted hide" data-menu-empty>No dishes match that. Try another word, or <button type="button" class="link" data-menu-clear>show the whole menu</button>.</p>
+  {% for key, label, items in sections %}
+  <section id="s-{{ key }}" data-section="{{ key }}" class="qsec">
+  <h2>{{ label.split(' · ')[0] }}{% if ' · ' in label %}<small>{{ label.split(' · ')[1] }}</small>{% endif %}</h2>
+  {% for it in items %}
+  <article class="qd {% if it.image %}pic{% endif %}" id="{{ it.slug }}" data-dish="{{ (it.name ~ ' ' ~ it.description ~ ' ' ~ it.options|map(attribute='label')|join(' '))|lower }}">
+    {% if it.image %}<img class="ph" src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">{% endif %}
+    <div><h3>{{ it.name }}</h3>{% if it.notice_hours > 24 %}<span class="notice">{{ it.notice_hours }} hours' notice</span>{% endif %}</div>
+    <p>{{ it.description }}</p>
+    {% if it.enquiry %}{% if it.slug == 'tiffin' and tiffin_plans %}<a class="btn primary" href="/tiffin">See plans and sign up</a>{% else %}<button type="button" class="btn" data-ask="{{ it.name }}">Ask about {{ it.name|lower }}</button>{% endif %}{% endif %}
+    <div>
+      {% for o in it.options %}
+      <div class="opt" data-option="{{ o.id }}" data-name="{{ it.name }}" data-portion="{{ o.label }}" data-price="{{ o.price }}">
+        <div><span class="lbl">{{ o.label }}</span> <span class="price">{{ money(o.price) }}</span></div>
+        <div class="opt-ctrl"><button class="btn primary add" type="button" data-add {% if not st.accepting_orders %}disabled{% endif %}>Add</button>
+          <span class="qty hide"><button type="button" data-dec aria-label="One less">−</button><span data-q>0</span><button type="button" data-inc aria-label="One more">+</button></span></div>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+  {% endfor %}
+  </section>
+  {% endfor %}
+  <p class="small muted" style="margin-top:26px">Questions? WhatsApp <a href="https://wa.me/{{ wa(st.whatsapp) }}">{{ st.whatsapp }}</a> or use the chat button.</p>
+</div>
+<div class="basket hide" id="basket-bar"><div><b data-cart-total>£0.00</b> <span class="small" style="opacity:.8"><span data-cart-count>0</span> items</span></div><a class="btn primary" href="/checkout">Checkout</a></div>
+{% endblock %}

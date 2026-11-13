@@ -1,0 +1,6 @@
+<div class="order-info" aria-label="Ordering rules">
+  <span><b>Order ahead</b> 24 hours (48 for Raan Pulao)</span>
+  {% if st.offers_collection %}<span><b>Collection</b> {{ st.kitchen_postcode }} · no minimum</span>{% endif %}
+  {% if st.offers_delivery %}<span><b>Delivery</b> from £{{ '%.2f'|format(st.delivery_bands[0][1]) }}{% if st.delivery_minimum %} · minimum order {{ money(st.delivery_minimum) }}{% endif %}</span>{% else %}<span><b>Delivery</b> not yet, collection only</span>{% endif %}
+  <span><b>Times</b> {{ st.slot_start }} to {{ st.slot_end }}</span>
+</div>

@@ -54,8 +54,8 @@
       <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="field"><label>Up to miles</label><input name="band_miles_{{ i }}" value="{{ ('%g'|format(b[0])) if b and b[0] is not none else '' }}" placeholder="{{ 'any distance' if b else '' }}"></div>
         <div class="field"><label>Charge £</label><input name="band_fee_{{ i }}" value="{{ ('%.2f'|format(b[1])) if b else '' }}"></div>
-        <div class="field"><label>Minimum order £</label><input name="band_min_{{ i }}" value="{{ ('%g'|format(b[2])) if b and b[2] else '' }}"></div>
       </div>{% endfor %}
+      <div class="field"><label>Minimum order for delivery £</label><input name="delivery_minimum" value="{{ '%g'|format(st.delivery_minimum) }}" style="max-width:120px"><div class="hint">Food total needed to order delivery. 0 means no minimum. Collection never has a minimum.</div></div>
       <div class="field"><label>Furthest delivery (miles)</label><input name="max_delivery_miles" value="{{ '%g'|format(st.max_delivery_miles) }}" style="max-width:120px"><div class="hint">0 means no limit. Leave "up to miles" empty on the last band for "anything further".</div></div>
     </div>
   </div>
@@ -119,6 +119,24 @@
     Privacy policy URL for the Meta app: <a href="/privacy" target="_blank">{{ base_url }}/privacy</a>{% if stripe_on %} · Stripe webhook URL: {{ stripe_callback }}{% endif %}</p>
 </div>
 
+<div class="card {{ 'sage' if google.connected else '' }}" style="margin-top:24px">
+  <h2>Google Calendar</h2>
+  {% if google.connected %}
+    <p class="small">Connected. Every order appears in a calendar called “{{ st.shop_name }} orders” in your Google account, and changes and cancellations update it.{% if google.last_sync %} Last update: {{ google.last_sync[:16]|replace('T',' ') }}.{% endif %}</p>
+    {% if google.error %}<p class="small"><b>Problem:</b> {{ google.error }} (will retry automatically)</p>{% endif %}
+    <div class="row">
+      <form method="post" action="/owner/google/sync"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Update now</button></form>
+      <a class="btn small" href="{{ google.calendar_url }}" target="_blank" rel="noopener">Open Google Calendar</a>
+      <form method="post" action="/owner/google/disconnect" onsubmit="return confirm('Disconnect Google Calendar?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Disconnect</button></form>
+    </div>
+  {% elif google.configured %}
+    <p class="small">Sign in with your Google account once and every order is added to your Google Calendar automatically, with the time, dishes, customer, total and status.{% if google.error %} <b>{{ google.error }}</b>{% endif %}</p>
+    <form method="post" action="/owner/google/connect"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn primary small">Connect Google Calendar</button></form>
+  {% else %}
+    <p class="small">Not set up yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env (steps in docs/google-calendar.md), restart, then connect here. The redirect address to give Google is <code>{{ google.redirect_uri }}</code>. Until then you can still subscribe to the calendar link below.</p>
+  {% endif %}
+</div>
+
 <div class="grid two" style="align-items:start;margin-top:24px">
   <div class="card sage">
     <h2>Kitchen tablet and calendar</h2>
@@ -130,6 +148,7 @@
   </div>
   <form method="post" action="/owner/settings/password" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
     <h2>Password</h2>
+    <p class="small muted">Signed in as {{ st.owner_login_email or 'the owner' }}.</p>
     <div class="field"><label>Current password</label><input type="password" name="current" autocomplete="current-password" required></div>
     <div class="field"><label>New password</label><input type="password" name="new" autocomplete="new-password" minlength="8" required></div>
     <button class="btn">Change password</button>

@@ -450,3 +450,32 @@ body.has-basket .chat-fab { bottom: 86px; }
   body.home .foot { padding-bottom: 100px; }
 }
 @media (max-width: 900px) { table.stack-sm td[data-label] > div { text-align: right; min-width: 0; } }
+
+/* menu: ordering rules strip, search and category chips */
+.order-info { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
+.order-info span { background: #fff; border: 1px solid rgba(0,0,0,.1); border-radius: 9999px; padding: 7px 14px; font-size: 14px; }
+.order-info b { color: var(--forest); margin-right: 4px; }
+.menu-tools { position: sticky; top: 61px; z-index: 20; background: var(--cream); padding: 12px 0 10px; margin-top: 8px; border-bottom: 1px solid rgba(0,0,0,.08); }
+.menu-search { width: 100%; max-width: 520px; padding: 12px 18px; border-radius: 9999px; border: 1.5px solid rgba(0,0,0,.2); font: 16px var(--text); background: #fff; }
+.menu-search:focus { outline: 2px solid var(--forest); border-color: var(--forest); }
+.tabs.chips { gap: 8px; padding: 10px 0 0; position: static; margin: 0; background: none; }
+.tabs.chips a { font: 600 15px var(--text); padding: 9px 16px; border-radius: 9999px; border: 1.5px solid var(--forest); color: var(--forest); background: transparent; }
+.tabs.chips a.on { background: var(--forest); color: var(--cream); }
+.tabs.chips a.on::after { display: none; }
+.lp-order-link { text-decoration: underline; color: var(--forest); font-weight: 700; }
+.steps h3 { margin: 8px 0 6px; }
+@media (max-width: 760px) {
+  .order-info span { font-size: 13px; padding: 6px 12px; }
+  .menu-tools { margin-left: -20px; margin-right: -20px; padding-left: 20px; padding-right: 20px; }
+  /* phone checkout: basket first, then the steps in order, payment and the Place order button last */
+  #checkout .stack { display: contents; }
+  #checkout .card { order: 1; }
+  #checkout .checkout-aside .card:first-child { order: 0; }
+  #checkout .checkout-aside .card:last-child { order: 2; }
+}
+code { overflow-wrap: anywhere; }
+.main .tabs { position: static; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; max-width: 100%; }
+@media (max-width: 760px) {
+  .order-info { display: block; background: #fff; border: 1px solid rgba(0,0,0,.1); border-radius: 14px; padding: 8px 14px; }
+  .order-info span { display: block; border: 0; background: none; padding: 3px 0; border-radius: 0; }
+}

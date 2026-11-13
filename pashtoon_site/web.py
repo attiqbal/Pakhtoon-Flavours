@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from urllib.parse import quote as urlquote
 
 import bcrypt
+import httpx
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import accounts, agent, backup, config, db, llm, menu_data, messages, meta, notify, payments, reports, shop, tasks, tiffin
+from . import accounts, agent, backup, config, db, gcal, llm, menu_data, menu_image, messages, meta, notify, payments, reports, shop, tasks, tiffin
 from . import partners as partners_mod
 from .shop import ShopError
 
@@ -165,6 +166,19 @@ def wa_link(phone: str, text: str) -> str:
     return f"https://wa.me/{shop.wa_number(phone)}?text={urlquote(text)}"
 
 
+def ensure_owner() -> None:
+    """Make the owner account if it is missing. Never replaces an existing email or password."""
+    if not db.get_setting("owner_login_email"):
+        email = config.OWNER_EMAIL or menu_data.OWNER_EMAIL
+        db.set_setting("owner_login_email", email)
+        if not db.get_setting("owner_email"):
+            db.set_setting("owner_email", email)        # order alerts go here until she picks another
+    if not db.get_setting("owner_password_hash"):
+        password = config.OWNER_PASSWORD or menu_data.STARTER_PASSWORD
+        db.set_setting("owner_password_hash", bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
+        db.set_setting("owner_starter_password", password == menu_data.STARTER_PASSWORD)
+
+
 # ---------------------------------------------------------------- app
 
 def create_app(db_path: str | None = None) -> FastAPI:
@@ -172,8 +186,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db.use(db_path)
     db.init()
     shop.install()
-    if config.OWNER_PASSWORD and not db.get_setting("owner_password_hash"):
-        db.set_setting("owner_password_hash", bcrypt.hashpw(config.OWNER_PASSWORD.encode(), bcrypt.gensalt()).decode())
+    ensure_owner()
 
     tasks.start()
     app = FastAPI(title="Pakhtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
@@ -210,6 +223,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         featured = [i for i in items if i["image"] and i["category"] in ("mains", "special") and i["options"]]
         return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines(),
                       clips=[i for i in items if i["video"]], tiffin=next((i for i in items if i["category"] == "tiffin"), None),
+                      tiffin_plans=tiffin.plans(),
                       earliest=shop.earliest_day(), pay_methods=payments.methods(),
                       from_price=min((o["price"] for i in featured for o in i["options"]), default=0))
 
@@ -419,6 +433,58 @@ def create_app(db_path: str | None = None) -> FastAPI:
         tasks.add_task(_handle_meta, fresh)      # reply after answering Meta, so it doesn't time out and retry
         return {"ok": True}
 
+
+    # ------------------------------------------------------------ one-page menu, QR code and menu image
+
+    def _file(data: bytes, media_type: str, name: str, request: Request) -> Response:
+        headers = {"Cache-Control": "no-store"}
+        if request.query_params.get("download"):
+            headers["Content-Disposition"] = f'attachment; filename="{name}"'
+        return Response(data, media_type=media_type, headers=headers)
+
+    @app.get("/m", response_class=HTMLResponse)
+    def one_page_menu(request: Request):
+        """The page the QR code points to: the whole menu on one page, with ordering."""
+        return render(request, "public/qrmenu.html", sections=shop.menu_by_category(), tiffin_plans=tiffin.plans(),
+                      min_delivery=shop.delivery_minimum())
+
+    def _limited(request: Request) -> None:
+        if not allow(f"img:{ip(request)}", 40, 3600):
+            raise HTTPException(429, "Too many requests. Please try again later.")
+
+    @app.get("/m/qr.png")
+    async def qr_png_file(request: Request):
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.qr_png), "image/png", "pakhtoon-flavours-menu-qr.png", request)
+
+    @app.get("/m/qr.svg")
+    async def qr_svg_file(request: Request):
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.qr_svg), "image/svg+xml", "pakhtoon-flavours-menu-qr.svg", request)
+
+    @app.get("/menu.png")
+    async def menu_png_file(request: Request):
+        """The current menu as a shareable picture, drawn fresh each time so it always has the latest dishes and prices."""
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.render_png), "image/png", "pakhtoon-flavours-menu.png", request)
+
+    @app.get("/menu.pdf")
+    async def menu_pdf_file(request: Request):
+        _limited(request)
+        return _file(await run_in_threadpool(menu_image.render_pdf), "application/pdf", "pakhtoon-flavours-menu.pdf", request)
+
+    @app.get("/owner/qr-poster.pdf")
+    async def qr_poster(request: Request):
+        need_owner(request)
+        return _file(await run_in_threadpool(menu_image.poster_pdf), "application/pdf", "pakhtoon-flavours-qr-poster.pdf", request)
+
+    @app.get("/owner/share", response_class=HTMLResponse)
+    def share_page(request: Request):
+        need_owner(request)
+        url = menu_image.public_url()
+        return render(request, "owner/share.html", menu_url=url, local=any(h in url for h in ("localhost", "127.0.0.1")),
+                      stamp=int(time.time()))
+
     # ------------------------------------------------------------ owner: login
 
     @app.get("/owner/login", response_class=HTMLResponse)
@@ -426,16 +492,24 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return render(request, "owner/login.html", has_password=bool(db.get_setting("owner_password_hash")))
 
     @app.post("/owner/login")
-    async def login(request: Request, password: str = Form(""), next_: str = Form("/owner", alias="next")):
+    async def login(request: Request, password: str = Form(""), email: str = Form(""), next_: str = Form("/owner", alias="next")):
         await check_csrf(request)
         stored = db.get_setting("owner_password_hash")
         if not allow(f"login:{ip(request)}", 10, 900):
             return render(request, "owner/login.html", has_password=True, error="Too many tries. Wait 15 minutes.")
-        if not stored or not bcrypt.checkpw(password.encode(), stored.encode()):
-            return render(request, "owner/login.html", has_password=bool(stored), error="That password isn't right.")
+        owner_email = (db.get_setting("owner_login_email") or "").strip().lower()
+        email_ok = not owner_email or secrets.compare_digest(email.strip().lower(), owner_email)
+        pw_ok = bool(stored) and bcrypt.checkpw(password.encode(), stored.encode())
+        if not (pw_ok and email_ok):
+            return render(request, "owner/login.html", has_password=bool(stored), error="That email or password isn't right.")
         request.session.clear()
         request.session["owner"] = True
         return RedirectResponse(next_ if next_.startswith("/owner") else "/owner", status_code=303)
+
+    @app.get("/owner/password", response_class=HTMLResponse)
+    def password_page(request: Request):
+        need_owner(request)
+        return render(request, "owner/password.html")
 
     @app.post("/owner/logout")
     async def logout(request: Request):
@@ -808,7 +882,45 @@ def create_app(db_path: str | None = None) -> FastAPI:
                       stripe_on=payments.configured(), stripe_webhook=bool(config.STRIPE_WEBHOOK_SECRET),
                       meta_callback=f"{config.BASE_URL}/webhook/meta", stripe_callback=f"{config.BASE_URL}/webhook/stripe",
                       kitchen_link=f"{config.BASE_URL}/kitchen?key={db.get_setting('kitchen_token')}",
-                      feed=f"{config.BASE_URL}/calendar/{db.get_setting('calendar_token')}.ics")
+                      feed=f"{config.BASE_URL}/calendar/{db.get_setting('calendar_token')}.ics", google=gcal.status())
+
+    @app.post("/owner/google/connect")
+    async def google_connect(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        if not gcal.configured():
+            return back("/owner/settings", error="Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env first (docs/google-calendar.md).")
+        request.session["google_state"] = secrets.token_urlsafe(24)
+        return RedirectResponse(gcal.auth_url(request.session["google_state"]), status_code=303)
+
+    @app.get("/owner/google/callback")
+    async def google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+        need_owner(request)
+        expected = request.session.pop("google_state", "")
+        if error:
+            return back("/owner/settings", error="Google Calendar was not connected: " + error[:100])
+        if not code or not expected or not secrets.compare_digest(state, expected):
+            return back("/owner/settings", error="That Google sign-in expired. Please try Connect again.")
+        try:
+            await run_in_threadpool(gcal.finish_connect, code, shop.setting("shop_name") or "Shop")
+        except (gcal.GoogleError, httpx.HTTPError) as e:
+            return back("/owner/settings", error=f"Google Calendar was not connected: {str(e)[:150]}")
+        return back("/owner/settings", "Google Calendar connected. Your orders are being added now.")
+
+    @app.post("/owner/google/disconnect")
+    async def google_disconnect(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        await run_in_threadpool(gcal.disconnect)
+        return back("/owner/settings", "Google Calendar disconnected. Events already in Google stay there.")
+
+    @app.post("/owner/google/sync")
+    async def google_sync(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        n = await run_in_threadpool(gcal.sync_pending)
+        err = db.get_setting("google_error", "")
+        return back("/owner/settings", error=err) if err else back("/owner/settings", f"Calendar up to date ({n} sent).")
 
     @app.post("/owner/settings")
     async def settings_save(request: Request):
@@ -863,13 +975,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
             db.set_setting("slot_minutes", max(5, int(f.get("slot_minutes") or 30)))
             db.set_setting("daily_order_limit", max(0, int(f.get("daily_order_limit") or 0)))
             db.set_setting("max_delivery_miles", max(0.0, _float(f.get("max_delivery_miles"), 0)))
+            db.set_setting("delivery_minimum", max(0.0, _float(f.get("delivery_minimum"), 0) or 0))
             bands = []
             for i in range(3):
                 fee = _float(f.get(f"band_fee_{i}"))
                 if fee is None:
                     continue
                 upto = _float(f.get(f"band_miles_{i}"))
-                bands.append([upto, fee, _float(f.get(f"band_min_{i}"), 0) or 0])
+                bands.append([upto, fee, 0])
             if bands:
                 bands.sort(key=lambda b: (b[0] is None, b[0] or 0))
                 db.set_setting("delivery_bands", bands)
@@ -878,16 +991,25 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return back("/owner/settings", "Settings saved.")
 
     @app.post("/owner/settings/password")
-    async def change_password(request: Request, current: str = Form(""), new: str = Form("")):
+    async def change_password(request: Request, current: str = Form(""), new: str = Form(""), confirm: str = Form(None),
+                              from_: str = Form("/owner/settings", alias="from")):
         need_owner(request)
         await check_csrf(request)
+        page = "/owner/password" if from_ == "/owner/password" else "/owner/settings"
         stored = db.get_setting("owner_password_hash")
+        if not allow(f"pw:{ip(request)}", 10, 900):
+            return back(page, error="Too many tries. Wait 15 minutes.")
         if stored and not bcrypt.checkpw(current.encode(), stored.encode()):
-            return back("/owner/settings", error="Your current password isn't right.")
+            return back(page, error="Your current password isn't right.")
         if len(new) < 8:
-            return back("/owner/settings", error="Use at least 8 characters for the new password.")
+            return back(page, error="Use at least 8 characters for the new password.")
+        if confirm is not None and confirm != new:
+            return back(page, error="The two new passwords don't match.")
+        if new == current:
+            return back(page, error="Choose a password different from the current one.")
         db.set_setting("owner_password_hash", bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode())
-        return back("/owner/settings", "Password changed.")
+        db.set_setting("owner_starter_password", False)
+        return back(page, "Password changed.")
 
     @app.post("/owner/settings/new-links")
     async def new_links(request: Request):

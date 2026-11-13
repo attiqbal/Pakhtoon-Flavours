@@ -11,7 +11,10 @@ def _env(name: str, default: str = "") -> str:
 DATA_DIR = _env("PASHTOON_DATA_DIR", "data")
 DB_PATH = _env("PASHTOON_DB", os.path.join(DATA_DIR, "pashtoon_site.db"))
 BASE_URL = _env("PASHTOON_BASE_URL", "http://localhost:8000").rstrip("/")
-OWNER_PASSWORD = _env("OWNER_PASSWORD")          # used once, to set the owner's password on first start
+# The owner account is made automatically on first start (menu_data.OWNER_EMAIL and STARTER_PASSWORD). These two are
+# optional overrides for that first start only; an existing password is never replaced.
+OWNER_PASSWORD = _env("OWNER_PASSWORD")
+OWNER_EMAIL = _env("OWNER_EMAIL").lower()
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
 # The strongest model by default: it handles unusual questions, menu edits and accounts best. Owners can pick a
 # cheaper one in Settings. Override here with CLAUDE_MODEL in .env.
@@ -37,6 +40,9 @@ META_PAGE_TOKEN = _env("META_PAGE_TOKEN")                 # Facebook Page access
 # Optional card payments through Stripe Checkout (cards, Apple Pay, Google Pay). Empty = off.
 STRIPE_SECRET_KEY = _env("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = _env("STRIPE_WEBHOOK_SECRET")
+# Optional Google Calendar sync (docs/google-calendar.md). Empty = off.
+GOOGLE_CLIENT_ID = _env("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = _env("GOOGLE_CLIENT_SECRET")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 
 

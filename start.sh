@@ -11,7 +11,6 @@ fi
 # .env: create it if missing; add any missing setting. Never overwrites a value you set.
 touch .env && chmod 600 .env
 add_default() { grep -q "^$1=" .env || printf '%s=%s\n' "$1" "$2" >> .env; }
-add_default OWNER_PASSWORD "$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 12)"
 add_default ANTHROPIC_API_KEY ""
 add_default META_VERIFY_TOKEN "$(openssl rand -hex 12)"
 value() { grep "^$1=" .env | head -1 | cut -d= -f2-; }
@@ -28,7 +27,7 @@ sleep 2
 echo
 echo "Pakhtoon Flavours is running at: $PASHTOON_BASE_URL     (log: data/site.log)"
 echo "Owner dashboard:  $PASHTOON_BASE_URL/owner"
-echo "Owner password:   $(value OWNER_PASSWORD)   (first start only; change it in Settings)"
+echo "Owner login:      aarzuehtishaam@gmail.com with the starter password (see README). Change it in the dashboard under Password."
 if [ -z "$(value ANTHROPIC_API_KEY)" ]; then
   echo "AI assistant:     off. Add ANTHROPIC_API_KEY to the .env file and run this script again to switch it on."
 else
