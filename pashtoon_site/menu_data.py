@@ -69,7 +69,7 @@ DEFAULT_SETTINGS = {
     "instagram": "thepashtoonflavours",
     "tiktok": "thepashtoonflavours",
     "accepting_orders": True,
-    "offers_delivery": False,         # collection only for now; switch on in Settings
+    "offers_delivery": True,          # she delivers herself for now; switch off in Settings
     # Delivery partners: shown as "Also on ..." links when on; commission is used in the accounts.
     "partners": {k: {"on": False, "url": "", "commission": 30} for k, _ in PARTNERS},
     "partner_key": "",                # secret for /api/partner-orders (made on first start)

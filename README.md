@@ -8,7 +8,7 @@ assistant that answers customers. It is a standalone app with its own database, 
 ## What it does
 
 **For customers**
-- **Menu and ordering**: her real menu (Dam Pukh, Painda, Bannu Pulao, Namkeen Gosht, Kebab, Karahi, Raan Pulao and extras) with her photos and prices. Customers add dishes to a basket, pick a date and time, and choose collection or delivery. Delivery is priced from her bands (£3.99 up to 3 miles, £5.99 for 3 to 6 miles, £7.99 over 6 miles). Delivery has a £50 minimum food order (a setting); collection has no minimum.
+- **Menu and ordering**: her real menu (Dam Pukh, Painda, Bannu Pulao, Namkeen Gosht, Kebab, Karahi, Raan Pulao and extras) with her photos and prices. Customers add dishes to a basket, pick a date and time, and choose collection or delivery. Delivery is priced from her bands (£3.99 up to 3 miles, £5.99 for 3 to 6 miles, £7.99 over 6 miles). Delivery is on (she delivers herself) with a £50 minimum food order (a setting); collection has no minimum.
 - **Her rules are enforced**: 24 hours' notice (48 for Raan Pulao), cooking hours, closed days, an optional daily order limit, and the 24-hour cancellation policy.
 - **Paying**: cash on collection or delivery to start. Card, Apple Pay and Google Pay through Stripe switch on as soon as a Stripe key is added, and bank transfer is one tick away in Settings.
 - **Order page**: an order number and private tracking link, her own confirmation, payment and cancellation messages word for word, a Pay now button for card orders, and self-service cancellation more than 24 hours ahead.

@@ -110,6 +110,10 @@ def install() -> None:
         set_setting("rules_v1", True)
         set_setting("delivery_minimum", menu_data.DEFAULT_SETTINGS["delivery_minimum"])
         set_setting("delivery_bands", [[u, f, 0] for u, f, _ in setting("delivery_bands")])
+    if not get_setting("delivery_on_v1"):      # Nov 2026: she now delivers herself, £50 minimum. Done once; her later changes stay.
+        set_setting("delivery_on_v1", True)
+        set_setting("offers_delivery", True)
+        set_setting("delivery_minimum", menu_data.DEFAULT_SETTINGS["delivery_minimum"])
     if not get_setting("kheer_removed"):       # Kheer is discontinued
         set_setting("kheer_removed", True)
         remove_item("kheer")
