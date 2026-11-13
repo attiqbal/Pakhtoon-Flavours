@@ -6,7 +6,7 @@ import secrets
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
-from . import config, geo, menu_data
+from . import config, gcal, geo, menu_data
 from .db import execute, get_setting, q, q1, set_setting, tx
 
 STATUSES = ["confirmed", "cooking", "ready", "completed", "cancelled"]
@@ -495,6 +495,7 @@ def place_order(lines: list[dict], name: str, phone: str, fulfilment: str, d: st
     returning = q1("SELECT COUNT(*) n FROM orders WHERE phone=? AND id!=?", (phone, oid))["n"]
     alert("order", f"New order #{oid} from {name}: {money(o['total'])} for {o['date_pretty']} at {o['time']} ({fulfilment})"
           + ("" if returning else " · first-time customer"), f"/owner/orders/{oid}")
+    gcal.kick()
     return o
 
 
@@ -545,6 +546,7 @@ def place_partner_order(partner: str, lines: list[dict], name: str, d: str, t: s
                       (oid, "Items to check (see notes)", f"{label} order", gross))
     alert("order", f"New {label} order #{oid}: {money(gross)} for {pretty_date(parse_date(d).isoformat())} at {parse_time(t)}"
           + (" · some items need checking" if unmatched or not items else ""), f"/owner/orders/{oid}")
+    gcal.kick()
     return get_order(oid)
 
 
@@ -562,6 +564,7 @@ def set_status(order_id: int, status: str) -> dict:
         use_stock_for_order(order_id)
     if status == "cancelled" and o["stock_used"]:
         return_stock_for_order(order_id)
+    gcal.kick()
     return get_order(order_id)
 
 
@@ -571,6 +574,7 @@ def set_payment(order_id: int, payment_status: str) -> dict:
     o = get_order(order_id)
     paid_at = (o["paid_at"] or today()) if payment_status == "paid" else None
     execute("UPDATE orders SET payment_status=?, paid_at=?, updated_at=? WHERE id=?", (payment_status, paid_at, iso_now(), order_id))
+    gcal.kick()
     return get_order(order_id)
 
 

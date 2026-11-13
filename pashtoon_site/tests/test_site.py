@@ -1025,3 +1025,143 @@ def test_first_start_creates_owner_from_env(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path / "u"))
     web.create_app(str(tmp_path / "fresh.db"))
     assert db.get_setting("owner_login_email") == "aarzuehtishaam@gmail.com" and db.get_setting("owner_must_change_password") is True
+
+# ---------------------------------------------------------------- Google Calendar (Google is faked, no network)
+
+class FakeGoogle:
+    """Stands in for httpx. Keeps a dict of events like Google does, including 409 on a reused id."""
+    def __init__(self):
+        self.events, self.calls, self.fail_with = {}, [], None
+
+    def post(self, url, **kw):
+        self.calls.append(("POST", url))
+        if "oauth2.googleapis.com/token" in url:
+            if kw["data"].get("grant_type") == "refresh_token":
+                return FakeResp(200, {"access_token": "at2", "expires_in": 3600})
+            return FakeResp(200, {"access_token": "at1", "refresh_token": "rt1", "expires_in": 3600})
+        return FakeResp(200, {})
+
+    def request(self, method, url, **kw):
+        self.calls.append((method, url))
+        if self.fail_with:
+            return FakeResp(self.fail_with, {"error": "boom"})
+        assert kw["headers"]["Authorization"].startswith("Bearer ")
+        if url.endswith("/calendars"):
+            return FakeResp(200, {"id": "cal123"})
+        body = kw["json"]
+        if method == "POST":
+            if body["id"] in self.events:
+                return FakeResp(409, {})
+            self.events[body["id"]] = body
+        else:
+            self.events[url.rsplit("/", 1)[1]] = body
+        return FakeResp(200, body)
+
+
+class FakeResp:
+    def __init__(self, code, data):
+        self.status_code, self._d, self.content, self.text = code, data, b"x", json.dumps(data)
+
+    def json(self):
+        return self._d
+
+
+@pytest.fixture()
+def google(client, monkeypatch):
+    from pashtoon_site import gcal
+    fake = FakeGoogle()
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_SECRET", "csecret")
+    monkeypatch.setattr(gcal, "SYNC", True)
+    monkeypatch.setattr(gcal.httpx, "post", fake.post)
+    monkeypatch.setattr(gcal.httpx, "request", fake.request)
+    gcal._token.update(value=None, expires=0.0)
+    yield fake
+    gcal._token.update(value=None, expires=0.0)
+
+
+def connect_google(c):
+    login(c)
+    r = c.post("/owner/google/connect", data={"csrf": csrf(c, "/owner/settings")})
+    assert r.status_code == 303 and r.headers["location"].startswith("https://accounts.google.com/")
+    assert "calendar.app.created" in r.headers["location"] and "csecret" not in r.headers["location"]
+    state = re.search(r"state=([^&]+)", r.headers["location"]).group(1)
+    return c.get(f"/owner/google/callback?code=abc&state={state}")
+
+
+def test_google_needs_keys_and_a_matching_state(client, monkeypatch):
+    login(client)
+    r = client.post("/owner/google/connect", data={"csrf": csrf(client, "/owner/settings")})
+    assert "GOOGLE_CLIENT_ID" in r.headers["location"]            # not configured: friendly message, no redirect to Google
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr(config, "GOOGLE_CLIENT_SECRET", "s")
+    r = client.get("/owner/google/callback?code=abc&state=forged")
+    assert "expired" in r.headers["location"]
+    assert client.get("/owner/google/callback?code=abc&state=x", follow_redirects=False).status_code == 303
+
+
+def test_google_connect_sends_orders_once_and_updates_them(google, client):
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    assert not google.events                                       # not connected yet: nothing sent
+    r = connect_google(client)
+    assert "connected" in r.headers["location"]
+    assert len(google.events) == 1
+    ev = next(iter(google.events.values()))
+    assert ev["id"].startswith("pforder") and "Ayesha Khan" in ev["summary"] and "Karahi" in ev["description"]
+    assert ev["start"]["timeZone"] == "Europe/London" and ev["start"]["dateTime"].endswith("18:00:00")
+    # change the order: same event updated, never a second one
+    oid = shop.list_orders()[0]["id"]
+    shop.set_status(oid, "ready")
+    shop.set_payment(oid, "paid")
+    assert len(google.events) == 1 and "Paid" in next(iter(google.events.values()))["description"]
+    # nothing changed: nothing sent
+    n = len(google.calls)
+    from pashtoon_site import gcal
+    assert gcal.sync_pending() == 0 and len(google.calls) == n
+    # a new order is added by place_order itself
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 2}], time="19:00")
+    assert len(google.events) == 2
+
+
+def test_google_cancelled_order_is_marked_and_unsent_cancelled_is_skipped(google, client):
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    connect_google(client)
+    oid = shop.list_orders()[0]["id"]
+    shop.set_status(oid, "cancelled")
+    ev = next(iter(google.events.values()))
+    assert ev["summary"].startswith("CANCELLED") and ev["transparency"] == "transparent"
+    # an order cancelled before it was ever sent creates no event
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}], time="20:00")
+    o2 = shop.list_orders()[-1]["id"]
+    from pashtoon_site import gcal
+    db.execute("UPDATE orders SET gcal_hash=NULL WHERE id=?", (o2,))
+    db.execute("UPDATE orders SET status='cancelled' WHERE id=?", (o2,))
+    before = len(google.events)
+    gcal.sync_pending()
+    assert len(google.events) == before
+
+
+def test_google_failure_never_blocks_orders_and_retries(google, client):
+    from pashtoon_site import gcal
+    connect_google(client)
+    google.fail_with = 500
+    r = checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    assert r.status_code == 303 and len(shop.list_orders()) == 1   # the order still went through
+    assert db.get_setting("google_error")
+    google.fail_with = None
+    assert gcal.sync_pending() == 1 and len(google.events) == 1 and not db.get_setting("google_error")
+
+
+def test_google_revoked_access_asks_to_reconnect_and_disconnect_clears(google, client, monkeypatch):
+    from pashtoon_site import gcal
+    connect_google(client)
+    gcal._token.update(value=None, expires=0.0)
+    monkeypatch.setattr(gcal.httpx, "post", lambda url, **kw: FakeResp(400, {"error": "invalid_grant"}))
+    checkout(client, [{"option_id": opt("Karahi", "Chicken"), "qty": 1}])
+    assert not gcal.connected() and "Connect Google Calendar again" in db.get_setting("google_error")
+    monkeypatch.setattr(gcal.httpx, "post", google.post)
+    connect_google(client)
+    assert gcal.connected()
+    r = client.post("/owner/google/disconnect", data={"csrf": csrf(client, "/owner/settings")})
+    assert r.status_code == 303 and not gcal.connected()
+    assert "Google Calendar" in client.get("/owner/settings").text

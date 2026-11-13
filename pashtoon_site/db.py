@@ -113,6 +113,7 @@ COLUMNS = [
     ("alerts", "notified", "INTEGER NOT NULL DEFAULT 0"),
     ("orders", "tiffin_id", "INTEGER"),
     ("orders", "partner_ref", "TEXT"),
+    ("orders", "gcal_hash", "TEXT"),
     ("menu_items", "enquiry", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
