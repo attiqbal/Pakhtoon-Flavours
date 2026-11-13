@@ -3,20 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f4f3e7">
+<meta name="theme-color" content="#fcf4e9">
 <title>{% block title %}{{ st.shop_name }}{% endblock %}</title>
 <meta name="description" content="{{ st.tagline }}. Pre-order online for collection from {{ st.kitchen_postcode }}{% if st.offers_delivery %} or delivery{% endif %}.">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v={{ st.logo_version }}"><link rel="icon" type="image/png" sizes="192x192" href="/brand/icon-192.png?v={{ st.logo_version }}">
+<link rel="apple-touch-icon" href="/brand/icon-180.png?v={{ st.logo_version }}">
+{% set page_title %}{{ self.title() }}{% endset %}{% set page_desc %}{{ st.tagline }}. Order online a day ahead for collection from {{ st.kitchen_postcode }}{% if st.offers_delivery %} or delivery{% endif %}.{% endset %}
+<meta property="og:type" content="website"><meta property="og:site_name" content="{{ st.shop_name }}">
+<meta property="og:title" content="{{ page_title|trim }}"><meta property="og:description" content="{{ page_desc|trim }}">
+<meta property="og:url" content="{{ base_url }}{{ path }}">
+<meta property="og:image" content="{{ base_url }}/brand/og.jpg?v={{ st.logo_version }}"><meta property="og:image:secure_url" content="{{ base_url }}/brand/og.jpg?v={{ st.logo_version }}">
+<meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="{{ st.shop_name }} logo">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{{ page_title|trim }}"><meta name="twitter:description" content="{{ page_desc|trim }}"><meta name="twitter:image" content="{{ base_url }}/brand/og.jpg?v={{ st.logo_version }}">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,200;1,9..144,300&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=6">
+<link rel="stylesheet" href="/static/style.css?v=8">
 <script>window.CSRF = "{{ csrf }}";</script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% block bodyclass %}{% endblock %}">
 {% if st.announcement %}<div class="announce">{{ st.announcement }}</div>{% endif %}
 <nav class="nav"><div class="nav-in">
-  <div class="nav-links"><a href="/menu">Menu</a><a href="/#how">How to order</a><a href="/#delivery">Collection{% if st.offers_delivery %} and delivery{% endif %}</a><a href="/#faq">Questions</a></div>
-  <a class="logo" href="/"><b>Pakhtoon Flavours</b></a>
+  <div class="nav-links"><a href="/menu">Menu</a><a href="/#how">How to order</a><a href="/#delivery">{{ "Delivery" if st.offers_delivery else "Collection" }}</a><a href="/#faq">Questions</a></div>
+  <a class="logo" href="/" aria-label="{{ st.shop_name }} home"><img src="/brand/logo-200.jpg?v={{ st.logo_version }}" alt="" width="56" height="56"><b>{{ st.shop_name }}</b></a>
   <div class="nav-right">
     {% if owner %}<a class="btn small" href="/owner">Dashboard</a>{% endif %}
     <a class="btn small" href="/checkout" id="nav-basket">Basket <span class="cart-count" data-cart-count>0</span></a>
@@ -26,7 +35,7 @@
 {% block page %}{% endblock %}
 <footer class="foot"><div class="wrap">
   <div class="foot-in">
-    <div><div class="big">Order a day ahead.<br><span class="thin">Cooked fresh for you.</span></div>
+    <div><img class="foot-logo" src="/brand/logo.jpg?v={{ st.logo_version }}" alt="{{ st.shop_name }} logo" width="150" height="150" loading="lazy"><div class="big">Order a day ahead.<br><span class="thin">Cooked fresh for you.</span></div>
       <p class="small" style="margin-top:18px;opacity:.85">{{ st.tagline }}. {{ st.area }}.</p>
       {% from "public/_hygiene.html" import hygiene_badge %}{{ hygiene_badge(st.hygiene_rating, st.hygiene_link, "foot-hygiene") }}</div>
     <div><b>Order</b><a href="/menu">Menu</a><a href="/checkout">Basket</a><a href="/#how">How to order</a><a href="/#faq">Questions</a><a href="https://wa.me/{{ wa(st.whatsapp) }}">WhatsApp {{ st.whatsapp }}</a></div>

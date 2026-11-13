@@ -34,6 +34,10 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Owner > Share menu** has the QR code (PNG, SVG for printers, and a printable A4 sheet) and **Generate menu image**, a PNG or PDF of the menu drawn from the current dishes and prices, in the style of her printed menu. Make it again after any change. Set `PASHTOON_BASE_URL` in `.env` to the live web address first, so the QR code points at the right place.
 - Delivery has a minimum food order (Settings > Delivery minimum, £50 by default). Collection never has one.
 
+## Logo and colours
+
+The logo lives in `pashtoon_site/static/brand/` (header mark, app icons, favicon and `og.jpg`, the 1200 x 630 picture WhatsApp and other apps show when a link to the site is shared). All pages carry Open Graph and Twitter tags pointing at `PASHTOON_BASE_URL/brand/og.jpg`. She can upload a different logo in **Settings > Logo**; every size is made again from it. The colours (navy, cream, teal, orange, coral, green) are taken from the logo and set at the top of `static/style.css`.
+
 ## The owner account
 
 The owner login is created automatically the first time the site starts: **aarzuehtishaam@gmail.com** with the starter password **AshtonUnderlyne**. There is nothing to set up. She can change the password any time in the dashboard under **Password** (the dashboard shows a reminder until she does). Because the starter password is written here, she should choose her own as soon as the site is live. If she forgets it, `python -m pashtoon_site.owner_setup` puts the starter password back.

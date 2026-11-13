@@ -92,6 +92,7 @@ DEFAULT_SETTINGS = {
     "hygiene_rating": "5",
     "hygiene_link": "https://ratings.food.gov.uk",
     "announcement": "",
+    "logo_version": 1,                # changes when she uploads a new logo, so browsers fetch it again
     "owner_login_email": "",           # the owner signs in with this email and her password
     "owner_starter_password": False,   # True while she still uses the starter password (shows a reminder)
     "ai_enabled": True,

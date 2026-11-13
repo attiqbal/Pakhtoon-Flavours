@@ -12,14 +12,17 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdf_canvas
 
-from . import config, shop
+from . import brand, config, shop
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(os.path.dirname(_rl_file), "fonts")
 W = 1654                       # A4 width at 200 dpi
 MIN_H = 2339                   # A4 height at 200 dpi
-INK, RED, MUTED, LINE = (27, 27, 27), (163, 49, 42), (95, 90, 84), (201, 167, 140)
-FOREST = (0, 71, 60)
+# Colours from the logo: navy text and outlines on cream, coral prices, teal and orange accents.
+INK, RED, MUTED, LINE = (18, 53, 91), (217, 72, 50), (71, 88, 107), (18, 53, 91)
+TEAL, ORANGE, GREEN = (47, 168, 173), (246, 173, 60), (106, 167, 74)
+ACCENTS = [RED, TEAL, ORANGE, GREEN]
+LOGO = 300                     # logo size at the top of the menu picture
 M = 100                        # side margin
 PHOTO = (240, 200)
 PRICE_W = 132
@@ -67,7 +70,7 @@ def _price(x: float) -> str:
     return shop.money(x)
 
 
-def qr_png(url: str | None = None, scale: int = 12, dark: str = "#00473c") -> bytes:
+def qr_png(url: str | None = None, scale: int = 12, dark: str = "#12355b") -> bytes:
     buf = io.BytesIO()
     segno.make(url or public_url(), error="m").save(buf, kind="png", scale=scale, border=3, dark=dark, light="white")
     return buf.getvalue()
@@ -75,7 +78,7 @@ def qr_png(url: str | None = None, scale: int = 12, dark: str = "#00473c") -> by
 
 def qr_svg(url: str | None = None) -> bytes:
     buf = io.BytesIO()
-    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#00473c", light="white", xmldecl=False)
+    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#12355b", light="white", xmldecl=False)
     return buf.getvalue()
 
 
@@ -145,7 +148,7 @@ def render_png() -> bytes:
     for t in info:
         info_lines += _wrap(probe, t, _font("r", 26), W // 2 - M - 20)
 
-    head_h = 430
+    head_h = 430 + LOGO + 10
     foot_h = 90 + 44 + 38 * len(info_lines) + 80
     foot_h = max(foot_h, 90 + 44 + 260 + 60)
     H = max(MIN_H, head_h + sum(rows_h) + (list_h + 40 if list_h else 0) + foot_h)
@@ -154,8 +157,20 @@ def render_png() -> bytes:
     px = ImageDraw.Draw(im)
     for y in range(H):                                       # soft cream to blush, like her printed menu
         t = y / H
-        px.line([(0, y), (W, y)], fill=(int(250 - 12 * t), int(243 - 14 * t), int(233 - 14 * t)))
-    px.rectangle((34, 34, W - 34, H - 34), outline=LINE, width=3)
+        px.line([(0, y), (W, y)], fill=(int(252 - 4 * t), int(244 - 6 * t), int(233 - 8 * t)))
+    px.rounded_rectangle((34, 34, W - 34, H - 34), radius=36, outline=LINE, width=5)
+    for i, x in enumerate(range(70, W - 60, 34)):             # dotted ring in the logo's colours, top and bottom
+        for yy in (58, H - 58):
+            px.ellipse((x - 5, yy - 5, x + 5, yy + 5), fill=ACCENTS[i % 4])
+    top = 80
+    logo_path = brand.path("logo.jpg")
+    if logo_path and os.path.exists(logo_path):
+        lg = Image.open(logo_path).convert("RGB").resize((LOGO, LOGO), Image.LANCZOS)
+        mask = Image.new("L", (LOGO, LOGO), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, LOGO, LOGO), fill=255)
+        im.paste(lg, ((W - LOGO) // 2, top), mask)
+        px.ellipse(((W - LOGO) // 2, top, (W + LOGO) // 2, top + LOGO), outline=LINE, width=5)
+    off = LOGO + 10
     d = ImageDraw.Draw(im)
 
     def spaced(text, y, font, fill, gap):
@@ -165,14 +180,22 @@ def render_png() -> bytes:
             d.text((x, y), ch, font=font, fill=fill)
             x += d.textlength(ch, font=font) + gap
 
-    spaced(s["tagline"].upper().replace(", HOME-COOKED TO ORDER", ""), 120, _font("b", 26), INK, 9)
+    spaced(s["tagline"].upper().replace(", HOME-COOKED TO ORDER", ""), 120 + off, _font("b", 26), TEAL, 9)
     title = s["shop_name"].upper()
     tf = _font("b", 112)
     while d.textlength(title, font=tf) > W - 2 * M and tf.size > 50:
         tf = _font("b", tf.size - 4)
-    d.text(((W - d.textlength(title, font=tf)) / 2, 190), title, font=tf, fill=INK)
-    d.line([(M + 40, 360), (W - M - 40, 360)], fill=INK, width=3)
-    d.polygon([(W / 2, 346), (W / 2 + 14, 360), (W / 2, 374), (W / 2 - 14, 360)], fill=INK)
+    words = title.split(" ")
+    tx = (W - d.textlength(title, font=tf)) / 2
+    if len(words) > 1:                                        # first word in the logo's letter colours, the rest navy
+        for i, ch in enumerate(words[0]):
+            d.text((tx, 190 + off), ch, font=tf, fill=[RED, ORANGE, TEAL, ORANGE, RED, TEAL, (58, 132, 190), GREEN][i % 8])
+            tx += d.textlength(ch, font=tf)
+        d.text((tx, 190 + off), " " + " ".join(words[1:]), font=tf, fill=INK)
+    else:
+        d.text((tx, 190 + off), title, font=tf, fill=INK)
+    d.line([(M + 40, 360 + off), (W - M - 40, 360 + off)], fill=INK, width=4)
+    d.polygon([(W / 2, 342 + off), (W / 2 + 18, 360 + off), (W / 2, 378 + off), (W / 2 - 18, 360 + off)], fill=ORANGE, outline=INK)
 
     y = head_h - 30
     for r in range(0, len(cards), 2):
@@ -198,6 +221,7 @@ def render_png() -> bytes:
                 yy += 34
             ph = _rounded_photo(it["photo"], PHOTO)
             im.paste(ph, (x0 + col_w - PHOTO[0], y + 4), ph)
+            d.rounded_rectangle((x0 + col_w - PHOTO[0], y + 4, x0 + col_w, y + 4 + PHOTO[1]), radius=18, outline=INK, width=4)
         y += rows_h[r // 2]
 
     if lists:
@@ -205,7 +229,7 @@ def render_png() -> bytes:
             x0 = M + ci * (col_w + 70)
             yy = y
             for head, rows in col:
-                d.text((x0, yy), head, font=_font("i", 40), fill=INK)
+                d.text((x0, yy), head, font=_font("i", 40), fill=TEAL)
                 yy += 60
                 for name, price in rows:
                     lines = _wrap(d, name, _font("r", 28), col_w - 190)
@@ -219,7 +243,7 @@ def render_png() -> bytes:
         y += list_h + 40
 
     fy = H - foot_h
-    d.line([(M + 40, fy), (W - M - 40, fy)], fill=INK, width=3)
+    d.line([(M + 40, fy), (W - M - 40, fy)], fill=INK, width=4)
     d.text((M, fy + 40), "Orders", font=_font("b", 40), fill=INK)
     yy = fy + 100
     for ln in info_lines:
@@ -260,20 +284,24 @@ def poster_pdf() -> bytes:
     c = pdf_canvas.Canvas(buf, pagesize=A4)
     c.setTitle(f"{s['shop_name']} QR code")
     pw, ph = A4
-    c.setFillColorRGB(0.97, 0.95, 0.91)
+    navy = (18 / 255, 53 / 255, 91 / 255)
+    c.setFillColorRGB(252 / 255, 244 / 255, 233 / 255)
     c.rect(0, 0, pw, ph, fill=1, stroke=0)
-    c.setFillColorRGB(0.0, 0.28, 0.24)
-    c.setFont("Helvetica-Bold", 34)
-    c.drawCentredString(pw / 2, ph - 120, s["shop_name"])
-    c.setFont("Helvetica", 16)
-    c.drawCentredString(pw / 2, ph - 150, s["tagline"])
-    c.setFont("Helvetica-Bold", 28)
-    c.drawCentredString(pw / 2, ph - 230, "Scan to see our menu and order")
-    qr = ImageReader(io.BytesIO(qr_png(scale=16)))
-    c.drawImage(qr, pw / 2 - 190, ph - 660, width=380, height=380)
+    c.setStrokeColorRGB(*navy)
+    c.setLineWidth(3)
+    c.roundRect(24, 24, pw - 48, ph - 48, 22, fill=0, stroke=1)
+    logo_path = brand.path("logo.jpg")
+    if logo_path and os.path.exists(logo_path):
+        c.drawImage(ImageReader(logo_path), pw / 2 - 100, ph - 250, width=200, height=200)
+    c.setFillColorRGB(*navy)
     c.setFont("Helvetica", 15)
-    c.setFillColorRGB(0.1, 0.1, 0.1)
-    c.drawCentredString(pw / 2, ph - 700, public_url())
+    c.drawCentredString(pw / 2, ph - 275, s["tagline"])
+    c.setFont("Helvetica-Bold", 28)
+    c.drawCentredString(pw / 2, ph - 325, "Scan to see our menu and order")
+    qr = ImageReader(io.BytesIO(qr_png(scale=16)))
+    c.drawImage(qr, pw / 2 - 170, ph - 690, width=340, height=340)
+    c.setFont("Helvetica", 15)
+    c.drawCentredString(pw / 2, ph - 715, public_url())
     c.setFont("Helvetica", 14)
     line = "Pre-orders, 24 hours' notice. " + (f"Delivery over {shop.money(shop.delivery_minimum())}; collection has no minimum." if s["offers_delivery"] and shop.delivery_minimum() else "Collection has no minimum order.")
     c.drawCentredString(pw / 2, ph - 740, line)

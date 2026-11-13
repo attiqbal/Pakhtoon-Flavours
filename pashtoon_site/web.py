@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import accounts, agent, backup, config, db, gcal, llm, menu_data, menu_image, messages, meta, notify, payments, reports, shop, tasks, tiffin
+from . import accounts, agent, backup, brand, config, db, gcal, llm, menu_data, menu_image, messages, meta, notify, payments, reports, shop, tasks, tiffin
 from . import partners as partners_mod
 from .shop import ShopError
 
@@ -433,6 +433,35 @@ def create_app(db_path: str | None = None) -> FastAPI:
         tasks.add_task(_handle_meta, fresh)      # reply after answering Meta, so it doesn't time out and retry
         return {"ok": True}
 
+
+    # ------------------------------------------------------------ brand logo (header, icons, link preview)
+
+    @app.get("/brand/{name}")
+    def brand_file(name: str):
+        """Public on purpose: WhatsApp and other apps fetch the preview picture without logging in."""
+        p = brand.path(name)
+        if not p or not os.path.exists(p):
+            raise HTTPException(404, "No such file.")
+        with open(p, "rb") as fh:
+            return Response(fh.read(), media_type=brand.FILES[name], headers={"Cache-Control": "public, max-age=3600"})
+
+    @app.post("/owner/settings/logo")
+    async def logo_save(request: Request, logo: UploadFile = File(None), reset: str = Form("")):
+        need_owner(request)
+        await check_csrf(request)
+        if reset:
+            brand.reset()
+            db.set_setting("logo_version", int(time.time()))
+            return back("/owner/settings", "The original logo is back.")
+        try:
+            m = await save_media(logo, allow_video=False, title="Logo")
+            if not m:
+                raise ShopError("Choose a picture for the logo first.")
+            await run_in_threadpool(brand.build, m["path"], brand.custom_dir())
+        except (ShopError, OSError, ValueError) as e:
+            return back("/owner/settings", error=str(e) if isinstance(e, (ShopError, ValueError)) else "That picture couldn't be read. Try a JPEG or PNG.")
+        db.set_setting("logo_version", int(time.time()))
+        return back("/owner/settings", "New logo saved. It now shows on the site, the menu picture and link previews.")
 
     # ------------------------------------------------------------ one-page menu, QR code and menu image
 
