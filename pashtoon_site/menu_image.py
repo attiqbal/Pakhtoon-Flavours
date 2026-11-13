@@ -35,10 +35,13 @@ PRICE_W = 132
 
 
 def _font(kind: str, size: int) -> ImageFont.FreeTypeFont:
-    """The site's font (Inter Tight, bundled, open licence): r = regular, b = semibold, d and i = medium for headings."""
+    """The site's fonts (bundled, open licence): Outfit for headlines (d), Inter Tight for the rest: r = regular,
+    b = semibold, i = medium."""
+    if kind == "d":
+        return ImageFont.truetype(os.path.join(SITE_FONTS, "Outfit.ttf"), size)
     f = ImageFont.truetype(os.path.join(SITE_FONTS, "InterTight.ttf"), size)
     try:
-        f.set_variation_by_axes([{"r": 400, "b": 600, "d": 500, "i": 500}[kind]])
+        f.set_variation_by_axes([{"r": 400, "b": 600, "i": 500}[kind]])
     except OSError:                                           # an old Pillow without variable fonts: regular weight
         pass
     return f
@@ -124,7 +127,7 @@ def _card_height(draw, it, text_w) -> int:
     h = 0
     if it["notice_hours"] > 24:
         h += 36
-    h += 8 + 54 * len(_wrap(draw, it["name"].upper(), _font("d", 46), text_w))
+    h += 8 + 54 * len(_wrap(draw, it["name"], _font("d", 46), text_w))
     h += sum(34 * len(_wrap(draw, o["label"], _font("b", 25), text_w - PRICE_W)) + 6 for o in it["options"])
     h += 34 * len(_wrap(draw, it["description"], _font("r", 24), text_w)) + 14
     return max(h, PHOTO[1])
@@ -204,7 +207,7 @@ def render_png() -> bytes:
                 d.text((x0, yy), f"Special order · {it['notice_hours']} hours' notice", font=_font("b", 24), fill=RED)
                 yy += 36
             nf = _font("d", 46)
-            for ln in _wrap(d, it["name"].upper(), nf, text_w):
+            for ln in _wrap(d, it["name"], nf, text_w):
                 d.text((x0, yy), ln, font=nf, fill=INK)
                 yy += 54
             for o in it["options"]:
@@ -286,8 +289,8 @@ def poster_pdf() -> bytes:
     ember = (220 / 255, 80 / 255, 0)
     head = "Helvetica-Bold"
     try:
-        pdfmetrics.registerFont(TTFont("InterTight", os.path.join(SITE_FONTS, "InterTight.ttf")))
-        head = "InterTight"
+        pdfmetrics.registerFont(TTFont("Outfit", os.path.join(SITE_FONTS, "Outfit.ttf")))
+        head = "Outfit"
     except Exception:                                         # the sheet still prints, in a plain font
         pass
     c.setFillColorRGB(1, 237 / 255, 215 / 255)
