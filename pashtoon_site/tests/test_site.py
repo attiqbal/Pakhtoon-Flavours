@@ -225,7 +225,7 @@ def test_owner_pages_render(client):
         r = client.get(path)
         assert r.status_code == 200, path
     page = client.get(f"/owner/orders/{o['id']}").text
-    assert "wa.me/447700900003" in page and "Thank you for your order with Pakhtoon Flavours" in page
+    assert "wa.me/447700900003" in page and "Thank you for your order with Pashtoon Flavours" in page
 
 
 def test_phone_order_status_and_kitchen(client):
@@ -286,7 +286,7 @@ def test_menu_edit_and_settings(client):
     r = client.post("/owner/settings", data={"csrf": csrf(client, "/owner/settings"), "accepting_orders": "1", "offers_delivery": "1",
                                               "offers_collection": "1", "pay_cash": "1", "slot_start": "13:00", "slot_end": "20:00", "slot_minutes": "30",
                                               "daily_order_limit": "8", "bank_details": "Sort 00-00-00", "band_miles_0": "3", "band_fee_0": "4.50",
-                                              "band_fee_1": "8", "delivery_minimum": "60", "max_delivery_miles": "10", "shop_name": "Pakhtoon Flavours"})
+                                              "band_fee_1": "8", "delivery_minimum": "60", "max_delivery_miles": "10", "shop_name": "Pashtoon Flavours"})
     assert r.status_code == 303
     assert shop.setting("daily_order_limit") == 8 and shop.setting("delivery_bands") == [[3, 4.5, 0], [None, 8, 0]] and shop.setting("delivery_minimum") == 60
     assert shop.time_slots()[0] == "13:00"
@@ -746,7 +746,7 @@ def test_alert_fallbacks_and_settings_card(client, sent):
     db.set_setting("owner_email", "aarzu@example.com")
     db.set_setting("alert_whatsapp", False)
     shop.alert("order", "x")
-    assert sent[-1] == ("email", "Pakhtoon Flavours: alert")      # fallback: no other channel worked
+    assert sent[-1] == ("email", "Pashtoon Flavours: alert")      # fallback: no other channel worked
     sent.clear()
     db.set_setting("alert_ntfy", True); db.set_setting("ntfy_topic", "t-123")
     shop.alert("order", "y")
@@ -929,7 +929,10 @@ def test_flyer_update_migrates_an_existing_menu(client):
     assert opts == [{"label": "Family portion", "active": 1}, {"label": "Per person", "active": 0}]
     item = db.q1("SELECT name, image FROM menu_items WHERE id=?", (pulao,))
     assert item == {"name": "Bannu Beef Pulao", "image": "/media/hers.jpg"}
-    assert shop.setting("shop_name") == "Pakhtoon Flavours"
+    assert shop.setting("shop_name") == "Pashtoon Flavours"
+    db.set_setting("shop_name", "Pakhtoon Flavours")                                                    # the earlier spelling on a live site
+    shop.install()
+    assert shop.setting("shop_name") == "Pashtoon Flavours"
 
 
 # ---------------------------------------------------------------- one-page menu, QR code, menu image
@@ -949,8 +952,8 @@ def test_one_page_menu_has_every_dish_and_ordering(client):
 
 def test_qr_codes_point_at_the_menu_page(client, monkeypatch):
     from pashtoon_site import menu_image
-    monkeypatch.setattr(config, "BASE_URL", "https://pakhtoonflavours.example")
-    assert menu_image.public_url() == "https://pakhtoonflavours.example/m"
+    monkeypatch.setattr(config, "BASE_URL", "https://pashtoonflavours.example")
+    assert menu_image.public_url() == "https://pashtoonflavours.example/m"
     r = client.get("/m/qr.png")
     assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert "attachment" in client.get("/m/qr.png?download=1").headers["content-disposition"]
@@ -961,7 +964,7 @@ def test_qr_codes_point_at_the_menu_page(client, monkeypatch):
     pdf = client.get("/owner/qr-poster.pdf")
     assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
     page = client.get("/owner/share")
-    assert page.status_code == 200 and "pakhtoonflavours.example/m" in page.text and "Generate menu image" in page.text
+    assert page.status_code == 200 and "pashtoonflavours.example/m" in page.text and "Generate menu image" in page.text
 
 
 def test_menu_image_png_and_pdf_follow_the_menu(client):
@@ -1077,6 +1080,21 @@ def test_existing_database_with_an_unusable_owner_login_can_be_reset_once(tmp_pa
     assert can_sign_in("her-own-pass-22")                                                                     # same value on a restart: left alone
     monkeypatch.setattr(config, "RESET_OWNER_LOGIN", "2026-11-20")
     assert can_sign_in(menu_data.STARTER_PASSWORD)                                                            # a new value resets again
+
+
+def test_old_domain_redirects_to_the_new_one(client, monkeypatch):
+    monkeypatch.setattr(config, "BASE_URL", "https://pashtoonflavours.uk")
+    monkeypatch.setattr(config, "OLD_HOSTS", ["pakhtoonflavours.uk", "www.pakhtoonflavours.uk"])
+    for host in ("pakhtoonflavours.uk", "www.pakhtoonflavours.uk", "PAKHTOONFLAVOURS.UK:443", "www.pashtoonflavours.uk"):
+        r = client.get("/m?table=4", headers={"host": host})
+        assert r.status_code == 301 and r.headers["location"] == "https://pashtoonflavours.uk/m?table=4", host   # path and query kept
+    assert client.get("/", headers={"host": "pakhtoonflavours.uk"}).headers["location"] == "https://pashtoonflavours.uk/"
+    assert client.post("/owner/logout", headers={"host": "pakhtoonflavours.uk"}).status_code == 308            # a post stays a post
+    assert client.get("/healthz", headers={"host": "pakhtoonflavours.uk"}).status_code == 200                 # health checks are not redirected
+    assert client.get("/m", headers={"host": "pashtoonflavours.uk"}).status_code == 200                       # the real address is left alone
+    assert client.get("/m", headers={"host": "testserver"}).status_code == 200
+    monkeypatch.setattr(config, "OLD_HOSTS", [])
+    assert client.get("/m", headers={"host": "pakhtoonflavours.uk"}).status_code == 200                       # switched off
 
 
 # ---------------------------------------------------------------- Google Calendar (Google is faked, no network)
@@ -1225,7 +1243,7 @@ def test_google_revoked_access_asks_to_reconnect_and_disconnect_clears(google, c
 def test_logo_files_and_link_preview_tags(client, monkeypatch):
     import io
     from PIL import Image
-    monkeypatch.setattr(config, "BASE_URL", "https://pakhtoonflavours.example")
+    monkeypatch.setattr(config, "BASE_URL", "https://pashtoonflavours.example")
     og = client.get("/brand/og.jpg")                                     # public: WhatsApp fetches it without logging in
     assert og.status_code == 200 and og.headers["content-type"] == "image/jpeg" and len(og.content) < 300_000
     assert Image.open(io.BytesIO(og.content)).size == (1200, 630)
@@ -1236,8 +1254,8 @@ def test_logo_files_and_link_preview_tags(client, monkeypatch):
     code = shop.place_order([{"option_id": opt("Dam Pukh"), "qty": 1}], "A", "07700900001", "collection", day(2), "18:00", "cash")["code"]
     for path in ("/", "/m", "/menu", f"/o/{code}"):
         h = client.get(path).text
-        assert '<meta property="og:image" content="https://pakhtoonflavours.example/brand/og.jpg' in h, path
-        assert f'<meta property="og:url" content="https://pakhtoonflavours.example{path}">' in h
+        assert '<meta property="og:image" content="https://pashtoonflavours.example/brand/og.jpg' in h, path
+        assert f'<meta property="og:url" content="https://pashtoonflavours.example{path}">' in h
         assert h.count('property="og:image"') == 1 and 'property="og:title"' in h and 'property="og:description"' in h
         assert 'name="twitter:card" content="summary_large_image"' in h and 'rel="apple-touch-icon" href="/brand/icon-180.png' in h
         assert '/brand/logo-200.jpg' in h                                # the logo is in the header

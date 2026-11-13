@@ -152,7 +152,7 @@
     const log = document.getElementById("chat-log");
     const input = document.getElementById("chat-input");
     let last = 0, poller = null, sending = false;
-    const label = { ai: window.ASSISTANT + " · AI assistant", owner: "Pakhtoon Flavours (owner)", customer: "You" };
+    const label = { ai: window.ASSISTANT + " · AI assistant", owner: "Pashtoon Flavours (owner)", customer: "You" };
     function add(l) {
       if (l.id && l.id <= last) return;
       if (l.id) last = l.id;

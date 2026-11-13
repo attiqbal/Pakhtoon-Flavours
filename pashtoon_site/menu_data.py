@@ -61,7 +61,7 @@ OWNER_EMAIL = "aarzuehtishaam@gmail.com"
 STARTER_PASSWORD = "AshtonUnderlyne"
 
 DEFAULT_SETTINGS = {
-    "shop_name": "Pakhtoon Flavours",
+    "shop_name": "Pashtoon Flavours",
     "tagline": "Traditional Khyber Pukhtunkhwa cuisine, home-cooked to order",
     "kitchen_postcode": "OL7 9TG",
     "area": "Ashton-under-Lyne, Greater Manchester",
