@@ -12,22 +12,36 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdf_canvas
 
-from . import config, shop
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+from . import brand, config, shop
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(os.path.dirname(_rl_file), "fonts")
+SITE_FONTS = os.path.join(HERE, "static", "fonts")
 W = 1654                       # A4 width at 200 dpi
 MIN_H = 2339                   # A4 height at 200 dpi
-INK, RED, MUTED, LINE = (27, 27, 27), (163, 49, 42), (95, 90, 84), (201, 167, 140)
-FOREST = (0, 71, 60)
+# The site's colours: warm cream type on a walnut-dark page, dashed cork lines, ember orange for prices and labels.
+INK = (255, 237, 215)
+RED = TEAL = ORANGE = (220, 80, 0)
+MUTED = (216, 198, 176)
+LINE = (108, 95, 81)
+PAGE = (16, 9, 4)
+LOGO = 300                     # logo size at the top of the menu picture
 M = 100                        # side margin
 PHOTO = (240, 200)
 PRICE_W = 132
 
 
 def _font(kind: str, size: int) -> ImageFont.FreeTypeFont:
-    name = {"r": "Vera.ttf", "b": "VeraBd.ttf", "i": "VeraIt.ttf"}[kind]
-    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
+    """The site's font (Inter Tight, bundled, open licence): r = regular, b = semibold, d and i = medium for headings."""
+    f = ImageFont.truetype(os.path.join(SITE_FONTS, "InterTight.ttf"), size)
+    try:
+        f.set_variation_by_axes([{"r": 400, "b": 600, "d": 500, "i": 500}[kind]])
+    except OSError:                                           # an old Pillow without variable fonts: regular weight
+        pass
+    return f
 
 
 def public_url() -> str:
@@ -67,7 +81,7 @@ def _price(x: float) -> str:
     return shop.money(x)
 
 
-def qr_png(url: str | None = None, scale: int = 12, dark: str = "#00473c") -> bytes:
+def qr_png(url: str | None = None, scale: int = 12, dark: str = "#100904") -> bytes:
     buf = io.BytesIO()
     segno.make(url or public_url(), error="m").save(buf, kind="png", scale=scale, border=3, dark=dark, light="white")
     return buf.getvalue()
@@ -75,7 +89,7 @@ def qr_png(url: str | None = None, scale: int = 12, dark: str = "#00473c") -> by
 
 def qr_svg(url: str | None = None) -> bytes:
     buf = io.BytesIO()
-    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#00473c", light="white", xmldecl=False)
+    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#100904", light="white", xmldecl=False)
     return buf.getvalue()
 
 
@@ -110,7 +124,7 @@ def _card_height(draw, it, text_w) -> int:
     h = 0
     if it["notice_hours"] > 24:
         h += 36
-    h += 58 * len(_wrap(draw, it["name"], _font("b", 46), text_w))
+    h += 8 + 54 * len(_wrap(draw, it["name"].upper(), _font("d", 46), text_w))
     h += sum(34 * len(_wrap(draw, o["label"], _font("b", 25), text_w - PRICE_W)) + 6 for o in it["options"])
     h += 34 * len(_wrap(draw, it["description"], _font("r", 24), text_w)) + 14
     return max(h, PHOTO[1])
@@ -145,17 +159,24 @@ def render_png() -> bytes:
     for t in info:
         info_lines += _wrap(probe, t, _font("r", 26), W // 2 - M - 20)
 
-    head_h = 430
+    head_h = 430 + LOGO + 10
     foot_h = 90 + 44 + 38 * len(info_lines) + 80
     foot_h = max(foot_h, 90 + 44 + 260 + 60)
     H = max(MIN_H, head_h + sum(rows_h) + (list_h + 40 if list_h else 0) + foot_h)
 
     im = Image.new("RGB", (W, H))
     px = ImageDraw.Draw(im)
-    for y in range(H):                                       # soft cream to blush, like her printed menu
-        t = y / H
-        px.line([(0, y), (W, y)], fill=(int(250 - 12 * t), int(243 - 14 * t), int(233 - 14 * t)))
-    px.rectangle((34, 34, W - 34, H - 34), outline=LINE, width=3)
+    px.rectangle((0, 0, W, H), fill=PAGE)
+    px.rounded_rectangle((34, 34, W - 34, H - 34), radius=24, outline=LINE, width=2)
+    top = 80
+    logo_path = brand.path("logo.jpg")
+    if logo_path and os.path.exists(logo_path):
+        lg = Image.open(logo_path).convert("RGB").resize((LOGO, LOGO), Image.LANCZOS)
+        mask = Image.new("L", (LOGO, LOGO), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, LOGO, LOGO), fill=255)
+        im.paste(lg, ((W - LOGO) // 2, top), mask)
+        px.ellipse(((W - LOGO) // 2, top, (W + LOGO) // 2, top + LOGO), outline=INK, width=3)
+    off = LOGO + 10
     d = ImageDraw.Draw(im)
 
     def spaced(text, y, font, fill, gap):
@@ -165,14 +186,14 @@ def render_png() -> bytes:
             d.text((x, y), ch, font=font, fill=fill)
             x += d.textlength(ch, font=font) + gap
 
-    spaced(s["tagline"].upper().replace(", HOME-COOKED TO ORDER", ""), 120, _font("b", 26), INK, 9)
+    spaced(s["tagline"].upper().replace(", HOME-COOKED TO ORDER", ""), 120 + off, _font("b", 26), TEAL, 9)
     title = s["shop_name"].upper()
-    tf = _font("b", 112)
-    while d.textlength(title, font=tf) > W - 2 * M and tf.size > 50:
-        tf = _font("b", tf.size - 4)
-    d.text(((W - d.textlength(title, font=tf)) / 2, 190), title, font=tf, fill=INK)
-    d.line([(M + 40, 360), (W - M - 40, 360)], fill=INK, width=3)
-    d.polygon([(W / 2, 346), (W / 2 + 14, 360), (W / 2, 374), (W / 2 - 14, 360)], fill=INK)
+    tf = _font("d", 132)
+    while d.textlength(title, font=tf) > W - 2 * M and tf.size > 60:
+        tf = _font("d", tf.size - 4)
+    d.text(((W - d.textlength(title, font=tf)) / 2, 182 + off), title, font=tf, fill=INK)
+    d.line([(M + 40, 360 + off), (W - M - 40, 360 + off)], fill=LINE, width=2)
+    d.polygon([(W / 2, 342 + off), (W / 2 + 18, 360 + off), (W / 2, 378 + off), (W / 2 - 18, 360 + off)], fill=ORANGE)
 
     y = head_h - 30
     for r in range(0, len(cards), 2):
@@ -182,10 +203,10 @@ def render_png() -> bytes:
             if it["notice_hours"] > 24:
                 d.text((x0, yy), f"Special order · {it['notice_hours']} hours' notice", font=_font("b", 24), fill=RED)
                 yy += 36
-            nf = _font("b", 46)
-            for ln in _wrap(d, it["name"], nf, text_w):
-                d.text((x0, yy), ln, font=nf, fill=RED if it["notice_hours"] > 24 else INK)
-                yy += 58
+            nf = _font("d", 46)
+            for ln in _wrap(d, it["name"].upper(), nf, text_w):
+                d.text((x0, yy), ln, font=nf, fill=INK)
+                yy += 54
             for o in it["options"]:
                 d.text((x0, yy), _price(o["price"]), font=_font("b", 25), fill=RED)
                 for ln in _wrap(d, o["label"], _font("b", 25), text_w - PRICE_W):
@@ -198,6 +219,7 @@ def render_png() -> bytes:
                 yy += 34
             ph = _rounded_photo(it["photo"], PHOTO)
             im.paste(ph, (x0 + col_w - PHOTO[0], y + 4), ph)
+            d.rounded_rectangle((x0 + col_w - PHOTO[0], y + 4, x0 + col_w, y + 4 + PHOTO[1]), radius=18, outline=LINE, width=2)
         y += rows_h[r // 2]
 
     if lists:
@@ -205,7 +227,7 @@ def render_png() -> bytes:
             x0 = M + ci * (col_w + 70)
             yy = y
             for head, rows in col:
-                d.text((x0, yy), head, font=_font("i", 40), fill=INK)
+                d.text((x0, yy), head.upper(), font=_font("i", 34), fill=TEAL)
                 yy += 60
                 for name, price in rows:
                     lines = _wrap(d, name, _font("r", 28), col_w - 190)
@@ -219,14 +241,14 @@ def render_png() -> bytes:
         y += list_h + 40
 
     fy = H - foot_h
-    d.line([(M + 40, fy), (W - M - 40, fy)], fill=INK, width=3)
-    d.text((M, fy + 40), "Orders", font=_font("b", 40), fill=INK)
+    d.line([(M + 40, fy), (W - M - 40, fy)], fill=LINE, width=2)
+    d.text((M, fy + 40), "ORDERS", font=_font("d", 40), fill=INK)
     yy = fy + 100
     for ln in info_lines:
         d.text((M, yy), ln, font=_font("r", 26), fill=INK)
         yy += 38
     rx = W // 2 + 70
-    d.text((rx, fy + 40), "Order online", font=_font("b", 40), fill=INK)
+    d.text((rx, fy + 40), "ORDER ONLINE", font=_font("d", 40), fill=INK)
     qr = Image.open(io.BytesIO(qr_png(scale=8))).convert("RGB").resize((230, 230), Image.NEAREST)
     im.paste(qr, (rx, fy + 100))
     d.text((rx + 260, fy + 110), "Scan to see the menu", font=_font("b", 26), fill=INK)
@@ -260,20 +282,38 @@ def poster_pdf() -> bytes:
     c = pdf_canvas.Canvas(buf, pagesize=A4)
     c.setTitle(f"{s['shop_name']} QR code")
     pw, ph = A4
-    c.setFillColorRGB(0.97, 0.95, 0.91)
+    navy = (16 / 255, 9 / 255, 4 / 255)                       # walnut ink on cream paper: this sheet is for printing
+    ember = (220 / 255, 80 / 255, 0)
+    head = "Helvetica-Bold"
+    try:
+        pdfmetrics.registerFont(TTFont("InterTight", os.path.join(SITE_FONTS, "InterTight.ttf")))
+        head = "InterTight"
+    except Exception:                                         # the sheet still prints, in a plain font
+        pass
+    c.setFillColorRGB(1, 237 / 255, 215 / 255)
     c.rect(0, 0, pw, ph, fill=1, stroke=0)
-    c.setFillColorRGB(0.0, 0.28, 0.24)
-    c.setFont("Helvetica-Bold", 34)
-    c.drawCentredString(pw / 2, ph - 120, s["shop_name"])
-    c.setFont("Helvetica", 16)
-    c.drawCentredString(pw / 2, ph - 150, s["tagline"])
-    c.setFont("Helvetica-Bold", 28)
-    c.drawCentredString(pw / 2, ph - 230, "Scan to see our menu and order")
+    c.setStrokeColorRGB(*navy)
+    c.setLineWidth(1.5)
+    c.roundRect(24, 24, pw - 48, ph - 48, 22, fill=0, stroke=1)
+    logo_path = brand.path("logo.jpg")
+    if logo_path and os.path.exists(logo_path):
+        c.saveState()                                         # the logo as a round badge, whatever its corners hold
+        clip = c.beginPath()
+        clip.circle(pw / 2, ph - 150, 92)
+        c.clipPath(clip, stroke=0, fill=0)
+        c.drawImage(ImageReader(logo_path), pw / 2 - 100, ph - 250, width=200, height=200)
+        c.restoreState()
+    c.setFillColorRGB(*navy)
+    c.setFillColorRGB(*ember)
+    c.setFont("Helvetica", 13)
+    c.drawCentredString(pw / 2, ph - 278, s["tagline"].upper())
+    c.setFillColorRGB(*navy)
+    c.setFont(head, 30 if head != "Helvetica-Bold" else 26)
+    c.drawCentredString(pw / 2, ph - 326, "SCAN TO SEE OUR MENU AND ORDER")
     qr = ImageReader(io.BytesIO(qr_png(scale=16)))
-    c.drawImage(qr, pw / 2 - 190, ph - 660, width=380, height=380)
+    c.drawImage(qr, pw / 2 - 170, ph - 690, width=340, height=340)
     c.setFont("Helvetica", 15)
-    c.setFillColorRGB(0.1, 0.1, 0.1)
-    c.drawCentredString(pw / 2, ph - 700, public_url())
+    c.drawCentredString(pw / 2, ph - 715, public_url())
     c.setFont("Helvetica", 14)
     line = "Pre-orders, 24 hours' notice. " + (f"Delivery over {shop.money(shop.delivery_minimum())}; collection has no minimum." if s["offers_delivery"] and shop.delivery_minimum() else "Collection has no minimum order.")
     c.drawCentredString(pw / 2, ph - 740, line)

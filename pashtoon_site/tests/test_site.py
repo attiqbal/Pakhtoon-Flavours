@@ -1184,3 +1184,49 @@ def test_google_revoked_access_asks_to_reconnect_and_disconnect_clears(google, c
     r = client.post("/owner/google/disconnect", data={"csrf": csrf(client, "/owner/settings")})
     assert r.status_code == 303 and not gcal.connected()
     assert "Google Calendar" in client.get("/owner/settings").text
+
+
+# ---------------------------------------------------------------- brand logo, link preview, owner upload
+
+def test_logo_files_and_link_preview_tags(client, monkeypatch):
+    import io
+    from PIL import Image
+    monkeypatch.setattr(config, "BASE_URL", "https://pakhtoonflavours.example")
+    og = client.get("/brand/og.jpg")                                     # public: WhatsApp fetches it without logging in
+    assert og.status_code == 200 and og.headers["content-type"] == "image/jpeg" and len(og.content) < 300_000
+    assert Image.open(io.BytesIO(og.content)).size == (1200, 630)
+    for name in ("logo.jpg", "logo-200.jpg", "icon-512.png", "icon-192.png", "icon-180.png", "favicon-32.png"):
+        assert client.get(f"/brand/{name}").status_code == 200, name
+    assert client.get("/brand/../config.py").status_code == 404 and client.get("/brand/nope.png").status_code == 404
+    db.set_setting("offers_delivery", True)
+    code = shop.place_order([{"option_id": opt("Dam Pukh"), "qty": 1}], "A", "07700900001", "collection", day(2), "18:00", "cash")["code"]
+    for path in ("/", "/m", "/menu", f"/o/{code}"):
+        h = client.get(path).text
+        assert '<meta property="og:image" content="https://pakhtoonflavours.example/brand/og.jpg' in h, path
+        assert f'<meta property="og:url" content="https://pakhtoonflavours.example{path}">' in h
+        assert h.count('property="og:image"') == 1 and 'property="og:title"' in h and 'property="og:description"' in h
+        assert 'name="twitter:card" content="summary_large_image"' in h and 'rel="apple-touch-icon" href="/brand/icon-180.png' in h
+        assert '/brand/logo-200.jpg' in h                                # the logo is in the header
+    assert "/brand/icon-192.png" in client.get("/static/owner.webmanifest").text
+
+
+def test_owner_can_replace_and_reset_the_logo(client):
+    import io
+    from PIL import Image
+    original = client.get("/brand/logo.jpg").content
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 400), (200, 30, 30)).save(buf, "PNG")
+    assert client.post("/owner/settings/logo", files={"logo": ("new.png", buf.getvalue(), "image/png")}).status_code in (303, 400)   # not logged in
+    assert client.get("/brand/logo.jpg").content == original
+    login(client)
+    tok = csrf(client, "/owner/settings")
+    r = client.post("/owner/settings/logo", data={"csrf": tok}, files={"logo": ("x.txt", b"not a picture at all, just text", "text/plain")})
+    assert "error=" in r.headers["location"] and client.get("/brand/logo.jpg").content == original
+    r = client.post("/owner/settings/logo", data={"csrf": tok}, files={"logo": ("new.png", buf.getvalue(), "image/png")})
+    assert "msg=" in r.headers["location"]
+    new = client.get("/brand/logo.jpg").content
+    assert new != original and Image.open(io.BytesIO(client.get("/brand/og.jpg").content)).size == (1200, 630)
+    assert Image.open(io.BytesIO(client.get("/brand/icon-192.png").content)).size == (192, 192)
+    assert client.get("/menu.png").status_code == 200 and client.get("/owner/qr-poster.pdf").content[:4] == b"%PDF"   # both draw with the new logo
+    client.post("/owner/settings/logo", data={"csrf": tok, "reset": "1"})
+    assert client.get("/brand/logo.jpg").content == original

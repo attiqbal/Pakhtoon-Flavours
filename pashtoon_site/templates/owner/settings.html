@@ -8,7 +8,7 @@
       <h2>Ordering</h2>
       <label class="check"><input type="checkbox" name="accepting_orders" value="1" {% if st.accepting_orders %}checked{% endif %}> Taking orders online</label>
       <label class="check"><input type="checkbox" name="offers_collection" value="1" {% if st.offers_collection %}checked{% endif %}> Collection</label>
-      <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery by us (off for now: collection only)</label>
+      <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery by us</label>
       <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="field"><label>First time</label><input type="time" name="slot_start" value="{{ st.slot_start }}"></div>
         <div class="field"><label>Last time</label><input type="time" name="slot_end" value="{{ st.slot_end }}"></div>
@@ -146,6 +146,13 @@
     <div class="row" style="margin-bottom:14px"><input readonly value="{{ feed }}" onclick="this.select()" style="flex:1" aria-label="Calendar link"></div>
     <form method="post" action="/owner/settings/new-links" onsubmit="return confirm('Make new links? The old kitchen and calendar links will stop working.')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Make new links</button></form>
   </div>
+  <form method="post" action="/owner/settings/logo" enctype="multipart/form-data" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Logo</h2>
+    <div class="row" style="margin-bottom:12px"><img src="/brand/logo-200.jpg?v={{ st.logo_version }}" alt="Current logo" width="96" height="96" style="border-radius:16px;border:2px solid var(--forest)">
+      <p class="small muted" style="flex:1;margin:0">Shown at the top of the site, as the app icon, on the menu picture and QR sheet, and as the picture people see when your link is shared on WhatsApp.</p></div>
+    <div class="field"><label for="logo">New logo (square JPEG or PNG works best)</label><input type="file" id="logo" name="logo" accept="image/jpeg,image/png,image/webp"></div>
+    <div class="row"><button class="btn">Save logo</button><button class="btn small" name="reset" value="1">Use the original logo</button></div>
+  </form>
   <form method="post" action="/owner/settings/password" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
     <h2>Password</h2>
     <p class="small muted">Signed in as {{ st.owner_login_email or 'the owner' }}.</p>

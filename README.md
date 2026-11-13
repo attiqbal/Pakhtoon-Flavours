@@ -34,6 +34,12 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Owner > Share menu** has the QR code (PNG, SVG for printers, and a printable A4 sheet) and **Generate menu image**, a PNG or PDF of the menu drawn from the current dishes and prices, in the style of her printed menu. Make it again after any change. Set `PASHTOON_BASE_URL` in `.env` to the live web address first, so the QR code points at the right place.
 - Delivery has a minimum food order (Settings > Delivery minimum, £50 by default). Collection never has one.
 
+## Logo and colours
+
+The logo (the turban, tray of kebabs and shield, supplied by Atif) lives in `pashtoon_site/static/brand/`: `logo.jpg` is the full picture, `logo-200.jpg` and the app icons and favicon are a tighter crop of the emblem so they stay readable when small, and `og.jpg` is the 1200 x 630 picture WhatsApp and other apps show when a link to the site is shared. All pages carry Open Graph and Twitter tags pointing at `PASHTOON_BASE_URL/brand/og.jpg`. She can upload a different logo in **Settings > Logo**; every size is made again from it.
+
+The look of the site is in two files: `static/style.css` is layout only, and `static/theme-walnut.css` holds every colour, font and corner size: a warm near-black page `#100904`, warm cream text `#ffedd7`, bark brown `#382416` for raised surfaces, dashed cork lines `#40372e`, and ember orange `#dc5000` for small labels and emphasis only (never buttons). Headings, labels and buttons are capitals at medium weight (Inter Tight and Inter); reading text is ordinary mixed case. The menu picture uses the same colours and font (bundled in `static/fonts/`, open licence). The printable QR sheet is cream paper with dark ink so it prints well.
+
 ## The owner account
 
 The owner login is created automatically the first time the site starts: **aarzuehtishaam@gmail.com** with the starter password **AshtonUnderlyne**. There is nothing to set up. She can change the password any time in the dashboard under **Password** (the dashboard shows a reminder until she does). Because the starter password is written here, she should choose her own as soon as the site is live. If she forgets it, `python -m pashtoon_site.owner_setup` puts the starter password back.

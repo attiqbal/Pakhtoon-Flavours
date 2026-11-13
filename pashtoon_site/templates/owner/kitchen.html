@@ -1,12 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
 <title>Kitchen · {{ st.shop_name }}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=2"><script>window.CSRF = "{{ csrf }}";</script></head>
+{% include "_theme_head.html" %}
+<script>window.CSRF = "{{ csrf }}";</script></head>
 <body class="kds">
 <header>
-  <div><h1>Kitchen</h1><div class="small" style="color:#a9b3a5" id="day-label"></div></div>
+  <div><h1>Kitchen</h1><div class="small" style="color:var(--kds-muted)" id="day-label"></div></div>
   <div class="row"><button class="daybtn on" data-day="0">Today</button><button class="daybtn" data-day="1">Tomorrow</button>
     {% if owner %}<a class="daybtn" href="/owner" style="text-decoration:none">Dashboard</a>{% endif %}</div>
   <div class="clock" id="clock"></div>
@@ -42,13 +41,13 @@
         const label = typeof next[s][1] === "function" ? next[s][1](o) : next[s][1];
         return `<div class="ticket ${late ? "late" : ""}">
           <div class="top"><span class="num">#${o.id}</span><span class="when">${esc(o.time)}</span></div>
-          <div class="small" style="color:#a9b3a5">${esc(o.customer_name)} · ${esc(o.fulfilment)}${o.postcode ? " · " + esc(o.postcode) : ""}${o.payment_status !== "paid" ? " · <b style='color:#ffcf7a'>not paid</b>" : ""}</div>
-          <ul>${o.items.map((i) => `<li><b>${i.qty}×</b>${esc(i.dish)} <span style="color:#a9b3a5">· ${esc(i.portion)}</span></li>`).join("")}</ul>
+          <div class="small" style="color:var(--kds-muted)">${esc(o.customer_name)} · ${esc(o.fulfilment)}${o.postcode ? " · " + esc(o.postcode) : ""}${o.payment_status !== "paid" ? " · <b style='color:var(--blush, #ffcf7a)'>not paid</b>" : ""}</div>
+          <ul>${o.items.map((i) => `<li><b>${i.qty}×</b>${esc(i.dish)} <span style="color:var(--kds-muted)">· ${esc(i.portion)}</span></li>`).join("")}</ul>
           ${o.notes ? `<div class="note">${esc(o.notes)}</div>` : ""}
           <div class="acts">${prev[s] ? `<button class="back" data-id="${o.id}" data-s="${prev[s]}" aria-label="Move back">↶</button>` : ""}<button data-id="${o.id}" data-s="${next[s][0]}">${esc(label)}</button></div></div>`;
       }).join("") || `<div class="empty">Nothing here</div>`;
     });
-    document.getElementById("totals").innerHTML = j.totals.length ? "<span class='small' style='color:#a9b3a5;margin:0 6px'>Still to cook:</span>" + j.totals.map(([k, n]) => `<div><b>${n}×</b> ${esc(k)}</div>`).join("") : "";
+    document.getElementById("totals").innerHTML = j.totals.length ? "<span class='small' style='color:var(--kds-muted);margin:0 6px'>Still to cook:</span>" + j.totals.map(([k, n]) => `<div><b>${n}×</b> ${esc(k)}</div>`).join("") : "";
   }
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-id]");
