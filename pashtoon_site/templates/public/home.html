@@ -42,14 +42,14 @@
 
 <section class="band" id="dishes"><div class="wrap">
   <div class="row between lp-head"><div><span class="eyebrow">Menu</span><h2>Popular dishes,<br><span class="thin">cooked to order</span></h2></div>
-    <a class="ghost" href="/menu">See the full menu{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
+    <a class="ghost" href="/menu">See the full menu</a></div>
   <div class="lp-rail">
     {% for it in featured[:8] %}
     <a class="dish lp-card" href="/menu#{{ it.slug }}" style="text-decoration:none">
       {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
       <img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">
       <div class="body"><h3>{{ it.name }}</h3><p>{{ it.description }}</p>
-        <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b> · <span class="lp-order-link">Order</span></p></div>
+        <p class="small"><b>{% set prices = it.options|map(attribute='price')|unique|sort|list %}{% if prices|length > 1 %}{% for pr in prices %}{{ money(pr) }}{% if not loop.last %} / {% endif %}{% endfor %}{% elif prices %}{{ money(prices[0]) }} per portion{% endif %}</b> · <span class="lp-order-link">Order</span></p></div>
     </a>
     {% endfor %}
   </div>
@@ -132,7 +132,7 @@
   <a class="btn primary big" href="/menu">Order now</a>
 </div></section>
 
-<div class="lp-sticky" id="lp-sticky"><a class="btn primary big block" href="/menu">Order now{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
+<div class="lp-sticky" id="lp-sticky"><a class="btn primary big block" href="/menu">Order now</a></div>
 {% endblock %}
 {% block scripts %}<script>
 document.querySelectorAll("[data-chat]").forEach((b) => b.addEventListener("click", () => { const o = document.getElementById("chat-open"); if (o) o.click(); }));
