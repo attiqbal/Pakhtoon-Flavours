@@ -24,7 +24,7 @@ Deploy the Dockerfile, add a **persistent disk mounted at `/data`**, set the env
 |---|---|
 | `PASHTOON_BASE_URL` | The public address (https). Used in links, Stripe and Meta callbacks. |
 | `OWNER_EMAIL` | The owner's login email. |
-| `OWNER_PASSWORD` | Temporary first password; the owner must change it at first login. To apply or reset on a site that already has data: put both in `.env`, then run `docker compose exec web python -m pashtoon_site.owner_setup` (or `python -m pashtoon_site.owner_setup` after `set -a; . ./.env; set +a`). Remove the password from `.env` afterwards. |
+| `OWNER_PASSWORD` | Temporary first password; the owner must change it at first login. To apply or reset on a site that already has data: put both in `.env`, then run `docker compose exec site python -m pashtoon_site.owner_setup` (or `python -m pashtoon_site.owner_setup` after `set -a; . ./.env; set +a`). Remove the password from `.env` afterwards. |
 | `OWNER_MUST_CHANGE` | `1` makes a first-start password temporary too. |
 | `SESSION_SECRET` | Long random string so logins survive restarts. |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` + `AI_PROVIDER=openai` | The assistant. |
