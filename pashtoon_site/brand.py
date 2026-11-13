@@ -9,7 +9,7 @@ from . import config
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static", "brand")
-CREAM = (255, 244, 236)                                       # the site's linen background
+CREAM = (16, 9, 4)                                            # the site's walnut background, behind any logo
 FILES = {"logo.jpg": "image/jpeg", "logo-200.jpg": "image/jpeg", "og.jpg": "image/jpeg", "icon-512.png": "image/png",
          "icon-192.png": "image/png", "icon-180.png": "image/png", "favicon-32.png": "image/png"}
 
@@ -27,7 +27,7 @@ def path(name: str) -> str | None:
 
 
 def _square(im: Image.Image, size: int) -> Image.Image:
-    """The logo fitted inside a cream square, so any shape of logo works as an icon."""
+    """The logo fitted inside a square of the site's background colour, so any shape of logo works as an icon."""
     canvas = Image.new("RGB", (size, size), CREAM)
     fit = im.copy()
     fit.thumbnail((size, size), Image.LANCZOS)
@@ -52,7 +52,7 @@ def build(source: str, out_dir: str) -> None:
     _square(im, 200).save(os.path.join(out_dir, "logo-200.jpg"), "JPEG", quality=86, optimize=True)
     for size, name in ((512, "icon-512.png"), (192, "icon-192.png"), (180, "icon-180.png"), (32, "favicon-32.png")):
         _square(im, size).save(os.path.join(out_dir, name), "PNG", optimize=True)
-    og = Image.new("RGB", (1200, 630), CREAM)                 # link preview: logo centred on cream, 1200 x 630
+    og = Image.new("RGB", (1200, 630), CREAM)                 # link preview: logo centred on the site's background colour, 1200 x 630
     mark = _square(im, 630)
     og.paste(mark, ((1200 - 630) // 2, 0))
     og.save(os.path.join(out_dir, "og.jpg"), "JPEG", quality=82, optimize=True)
