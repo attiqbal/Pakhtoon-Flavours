@@ -4,7 +4,7 @@
 <div class="topbar"><h1>Orders</h1><a class="btn primary" href="/owner/orders/new">Add a phone order</a></div>
 <div class="row between" style="margin-bottom:18px">
   <div class="choice">{% for k, label in [('upcoming','Upcoming'),('unpaid','Unpaid'),('past','Past'),('cancelled','Cancelled')] %}
-    <a href="/owner/orders?view={{ k }}" style="text-decoration:none"><span class="badge" style="padding:8px 16px;font-size:14px;{% if view == k and not search %}background:var(--forest);color:var(--on-fill){% endif %}">{{ label }}</span></a>{% endfor %}</div>
+    <a href="/owner/orders?view={{ k }}" style="text-decoration:none"><span class="badge filter{% if view == k and not search %} on{% endif %}">{{ label }}</span></a>{% endfor %}</div>
   <form method="get" class="row search-row"><input type="search" name="search" value="{{ search }}" placeholder="Name, phone or order no." style="max-width:260px" aria-label="Search orders"><button class="btn small">Search</button></form>
 </div>
 <div class="card scroll-x">
