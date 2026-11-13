@@ -224,8 +224,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines(),
                       clips=[i for i in items if i["video"]], tiffin=next((i for i in items if i["category"] == "tiffin"), None),
                       tiffin_plans=tiffin.plans(),
-                      earliest=shop.earliest_day(), pay_methods=payments.methods(),
-                      from_price=min((o["price"] for i in featured for o in i["options"]), default=0))
+                      earliest=shop.earliest_day(), pay_methods=payments.methods())
 
     @app.get("/menu", response_class=HTMLResponse)
     def menu_page(request: Request):
