@@ -22,12 +22,13 @@ FONT_DIR = os.path.join(os.path.dirname(_rl_file), "fonts")
 SITE_FONTS = os.path.join(HERE, "static", "fonts")
 W = 1654                       # A4 width at 200 dpi
 MIN_H = 2339                   # A4 height at 200 dpi
-# The site's colours: warm cream type on a walnut-dark page, dashed cork lines, ember orange for prices and labels.
-INK = (255, 237, 215)
-RED = TEAL = ORANGE = (220, 80, 0)
-MUTED = (216, 198, 176)
-LINE = (108, 95, 81)
-PAGE = (16, 9, 4)
+# The site's colours, from the logo: parchment paper, maroon type, burgundy prices, antique gold labels.
+INK = (59, 16, 19)
+RED = (122, 26, 29)
+TEAL = ORANGE = (138, 92, 12)
+MUTED = (106, 74, 61)
+LINE = (224, 200, 160)
+PAGE = (251, 239, 217)
 LOGO = 300                     # logo size at the top of the menu picture
 M = 100                        # side margin
 PHOTO = (240, 200)
@@ -81,7 +82,7 @@ def _price(x: float) -> str:
     return shop.money(x)
 
 
-def qr_png(url: str | None = None, scale: int = 12, dark: str = "#100904") -> bytes:
+def qr_png(url: str | None = None, scale: int = 12, dark: str = "#3b1013") -> bytes:
     buf = io.BytesIO()
     segno.make(url or public_url(), error="m").save(buf, kind="png", scale=scale, border=3, dark=dark, light="white")
     return buf.getvalue()
@@ -89,7 +90,7 @@ def qr_png(url: str | None = None, scale: int = 12, dark: str = "#100904") -> by
 
 def qr_svg(url: str | None = None) -> bytes:
     buf = io.BytesIO()
-    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#100904", light="white", xmldecl=False)
+    segno.make(url or public_url(), error="m").save(buf, kind="svg", scale=10, border=3, dark="#3b1013", light="white", xmldecl=False)
     return buf.getvalue()
 
 
@@ -282,15 +283,15 @@ def poster_pdf() -> bytes:
     c = pdf_canvas.Canvas(buf, pagesize=A4)
     c.setTitle(f"{s['shop_name']} QR code")
     pw, ph = A4
-    navy = (16 / 255, 9 / 255, 4 / 255)                       # walnut ink on cream paper: this sheet is for printing
-    ember = (220 / 255, 80 / 255, 0)
+    navy = (59 / 255, 16 / 255, 19 / 255)                      # maroon ink on parchment paper: this sheet is for printing
+    ember = (138 / 255, 92 / 255, 12 / 255)
     head = "Helvetica-Bold"
     try:
         pdfmetrics.registerFont(TTFont("InterTight", os.path.join(SITE_FONTS, "InterTight.ttf")))
         head = "InterTight"
     except Exception:                                         # the sheet still prints, in a plain font
         pass
-    c.setFillColorRGB(1, 237 / 255, 215 / 255)
+    c.setFillColorRGB(251 / 255, 239 / 255, 217 / 255)
     c.rect(0, 0, pw, ph, fill=1, stroke=0)
     c.setStrokeColorRGB(*navy)
     c.setLineWidth(1.5)
