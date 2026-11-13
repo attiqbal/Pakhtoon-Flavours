@@ -8,7 +8,7 @@
       <h2>Ordering</h2>
       <label class="check"><input type="checkbox" name="accepting_orders" value="1" {% if st.accepting_orders %}checked{% endif %}> Taking orders online</label>
       <label class="check"><input type="checkbox" name="offers_collection" value="1" {% if st.offers_collection %}checked{% endif %}> Collection</label>
-      <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery by us (off for now: collection only)</label>
+      <label class="check" style="margin-bottom:14px"><input type="checkbox" name="offers_delivery" value="1" {% if st.offers_delivery %}checked{% endif %}> Delivery by us</label>
       <div class="grid" style="gap:10px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="field"><label>First time</label><input type="time" name="slot_start" value="{{ st.slot_start }}"></div>
         <div class="field"><label>Last time</label><input type="time" name="slot_end" value="{{ st.slot_end }}"></div>

@@ -9,7 +9,7 @@ from . import config
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static", "brand")
-CREAM = (252, 244, 233)
+CREAM = (255, 244, 236)                                       # the site's linen background
 FILES = {"logo.jpg": "image/jpeg", "logo-200.jpg": "image/jpeg", "og.jpg": "image/jpeg", "icon-512.png": "image/png",
          "icon-192.png": "image/png", "icon-180.png": "image/png", "favicon-32.png": "image/png"}
 

@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#fcf4e9">
 <title>{% block title %}{{ st.shop_name }}{% endblock %}</title>
 <meta name="description" content="{{ st.tagline }}. Pre-order online for collection from {{ st.kitchen_postcode }}{% if st.offers_delivery %} or delivery{% endif %}.">
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png?v={{ st.logo_version }}"><link rel="icon" type="image/png" sizes="192x192" href="/brand/icon-192.png?v={{ st.logo_version }}">
@@ -15,9 +14,7 @@
 <meta property="og:image" content="{{ base_url }}/brand/og.jpg?v={{ st.logo_version }}"><meta property="og:image:secure_url" content="{{ base_url }}/brand/og.jpg?v={{ st.logo_version }}">
 <meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="{{ st.shop_name }} logo">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{{ page_title|trim }}"><meta name="twitter:description" content="{{ page_desc|trim }}"><meta name="twitter:image" content="{{ base_url }}/brand/og.jpg?v={{ st.logo_version }}">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,200;1,9..144,300&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=8">
+{% include "_theme_head.html" %}
 <script>window.CSRF = "{{ csrf }}";</script>
 {% block head %}{% endblock %}
 </head>

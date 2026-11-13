@@ -82,7 +82,7 @@
 {% if clips %}
 <section class="band forest"><div class="wrap">
   <div class="row between lp-head"><div><span class="eyebrow">Videos</span><h2>Watch it<br><span class="thin">being cooked</span></h2></div>
-    <a class="ghost" style="color:var(--cream)" href="https://instagram.com/{{ st.instagram }}" target="_blank" rel="noopener">More on Instagram</a></div>
+    <a class="ghost" style="color:var(--on-fill)" href="https://instagram.com/{{ st.instagram }}" target="_blank" rel="noopener">More on Instagram</a></div>
   <div class="lp-rail lp-reels">
     {% for it in clips[:6] %}
     <button type="button" class="lp-reel" data-video="{{ it.video }}" data-title="{{ it.name }}" aria-label="Watch {{ it.name }}">

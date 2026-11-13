@@ -36,7 +36,9 @@ assistant that answers customers. It is a standalone app with its own database, 
 
 ## Logo and colours
 
-The logo lives in `pashtoon_site/static/brand/` (header mark, app icons, favicon and `og.jpg`, the 1200 x 630 picture WhatsApp and other apps show when a link to the site is shared). All pages carry Open Graph and Twitter tags pointing at `PASHTOON_BASE_URL/brand/og.jpg`. She can upload a different logo in **Settings > Logo**; every size is made again from it. The colours (navy, cream, teal, orange, coral, green) are taken from the logo and set at the top of `static/style.css`.
+The logo lives in `pashtoon_site/static/brand/`: `logo.svg` (the full badge) and `mark.svg` (the small pot-and-sun mark used in the header and as the app icon) are the drawings, and the JPG and PNG files next to them are made from those, including `og.jpg`, the 1200 x 630 picture WhatsApp and other apps show when a link to the site is shared. All pages carry Open Graph and Twitter tags pointing at `PASHTOON_BASE_URL/brand/og.jpg`. She can upload a different logo in **Settings > Logo**; every size is made again from it.
+
+The look of the site is in two files: `static/style.css` is layout only, and `static/theme-deli.css` holds every colour, font and corner size (olive ink `#3c422e` on linen `#fff4ec`, peach cards, full-width green `#9eef80` and mustard `#fbd535` bands, one yellow-green button `#d1e030`; Instrument Serif for headlines, IBM Plex Serif for reading). The menu picture and QR sheet use the same colours and the same fonts, bundled in `static/fonts/` (open licence, licence files alongside).
 
 ## The owner account
 
