@@ -9,7 +9,7 @@ from . import config
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static", "brand")
-CREAM = (16, 9, 4)                                            # the site's walnut background, behind any logo
+CREAM = (252, 240, 222)                                       # parchment, close to the logo's own paper, behind any logo
 FILES = {"logo.jpg": "image/jpeg", "logo-200.jpg": "image/jpeg", "og.jpg": "image/jpeg", "icon-512.png": "image/png",
          "icon-192.png": "image/png", "icon-180.png": "image/png", "favicon-32.png": "image/png"}
 
