@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from urllib.parse import quote as urlquote
 
 import bcrypt
+import httpx
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import accounts, agent, backup, config, db, llm, menu_data, messages, meta, notify, payments, reports, shop, tasks, tiffin
+from . import accounts, agent, backup, config, db, gcal, llm, menu_data, messages, meta, notify, payments, reports, shop, tasks, tiffin
 from . import partners as partners_mod
 from .shop import ShopError
 
@@ -808,7 +809,45 @@ def create_app(db_path: str | None = None) -> FastAPI:
                       stripe_on=payments.configured(), stripe_webhook=bool(config.STRIPE_WEBHOOK_SECRET),
                       meta_callback=f"{config.BASE_URL}/webhook/meta", stripe_callback=f"{config.BASE_URL}/webhook/stripe",
                       kitchen_link=f"{config.BASE_URL}/kitchen?key={db.get_setting('kitchen_token')}",
-                      feed=f"{config.BASE_URL}/calendar/{db.get_setting('calendar_token')}.ics")
+                      feed=f"{config.BASE_URL}/calendar/{db.get_setting('calendar_token')}.ics", google=gcal.status())
+
+    @app.post("/owner/google/connect")
+    async def google_connect(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        if not gcal.configured():
+            return back("/owner/settings", error="Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env first (docs/google-calendar.md).")
+        request.session["google_state"] = secrets.token_urlsafe(24)
+        return RedirectResponse(gcal.auth_url(request.session["google_state"]), status_code=303)
+
+    @app.get("/owner/google/callback")
+    async def google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+        need_owner(request)
+        expected = request.session.pop("google_state", "")
+        if error:
+            return back("/owner/settings", error="Google Calendar was not connected: " + error[:100])
+        if not code or not expected or not secrets.compare_digest(state, expected):
+            return back("/owner/settings", error="That Google sign-in expired. Please try Connect again.")
+        try:
+            await run_in_threadpool(gcal.finish_connect, code, shop.setting("shop_name") or "Shop")
+        except (gcal.GoogleError, httpx.HTTPError) as e:
+            return back("/owner/settings", error=f"Google Calendar was not connected: {str(e)[:150]}")
+        return back("/owner/settings", "Google Calendar connected. Your orders are being added now.")
+
+    @app.post("/owner/google/disconnect")
+    async def google_disconnect(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        await run_in_threadpool(gcal.disconnect)
+        return back("/owner/settings", "Google Calendar disconnected. Events already in Google stay there.")
+
+    @app.post("/owner/google/sync")
+    async def google_sync(request: Request):
+        need_owner(request)
+        await check_csrf(request)
+        n = await run_in_threadpool(gcal.sync_pending)
+        err = db.get_setting("google_error", "")
+        return back("/owner/settings", error=err) if err else back("/owner/settings", f"Calendar up to date ({n} sent).")
 
     @app.post("/owner/settings")
     async def settings_save(request: Request):

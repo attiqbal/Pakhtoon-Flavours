@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 
-from . import backup, config, notify
+from . import backup, config, gcal, notify
 
 log = logging.getLogger(__name__)
 _started = False
@@ -12,7 +12,7 @@ _started = False
 
 def tick() -> None:
     from . import tiffin
-    for job in (notify.flush_held, backup.maybe_run, tiffin.extend_all):
+    for job in (notify.flush_held, backup.maybe_run, tiffin.extend_all, gcal.sync_pending):
         try:
             job()
         except Exception:  # noqa: BLE001  (one failing job must not stop the others)
