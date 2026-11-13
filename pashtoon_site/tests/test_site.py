@@ -89,7 +89,9 @@ def test_install_is_idempotent(client):
 # ---------------------------------------------------------------- ordering rules
 
 def test_quote_and_delivery_minimum(client):
-    with pytest.raises(shop.ShopError, match="only doing collection"):    # collection only by default
+    assert shop.setting("offers_delivery") is True and shop.delivery_minimum() == 50     # she delivers, £50 minimum
+    db.set_setting("offers_delivery", False)
+    with pytest.raises(shop.ShopError, match="only doing collection"):
         shop.delivery_quote("OL6 6AA")
     db.set_setting("offers_delivery", True)
     lines = [{"option_id": opt("Dam Pukh"), "qty": 1}, {"option_id": opt("Nan"), "qty": 2}]       # £46 of food
@@ -471,10 +473,22 @@ def test_dish_photo_upload(client):
 
 # ---------------------------------------------------------------- collection only, partners, tracked stock
 
-def test_collection_only_default_and_partner_orders(client):
-    assert shop.setting("offers_delivery") is False
-    html = client.get("/checkout").text
-    assert 'value="delivery"' not in html
+def test_delivery_switch_and_partner_orders(client):
+    home = client.get("/").text
+    assert "We deliver" in home and "Minimum order £50" in home and "Not yet" not in home and "No minimum order" in home
+    assert 'value="delivery"' in client.get("/checkout").text and "minimum order £50.00" in client.get("/m").text
+    for bit in ("we deliver ourselves on orders of £50.00 or more", "Collection has no minimum order", "Delivery needs at least £50.00 of food",
+                "How much is delivery", "Up to 3 miles: £3.99", "Cash on collection or delivery. You choose when you order."):
+        assert bit in home, bit                           # the questions and answers match the rules
+    assert "collection only" not in home.lower()
+    db.set_setting("offers_delivery", False)             # she can still switch it off
+    assert 'value="delivery"' not in client.get("/checkout").text and "Collection only for now" in client.get("/").text
+    shop.install()
+    assert shop.setting("offers_delivery") is False      # the one-off switch-on never comes back over her choice
+    db.set_setting("delivery_on_v1", False)              # an older site picks it up once
+    db.set_setting("delivery_minimum", 0)
+    shop.install()
+    assert shop.setting("offers_delivery") is True and shop.setting("delivery_minimum") == 50
     db.set_setting("partners", {"ubereats": {"on": True, "url": "https://ubereats.com/aarzu", "commission": 30},
                                 "deliveroo": {"on": False, "url": "", "commission": 25}, "justeat": {"on": False, "url": "", "commission": 0}})
     assert "ubereats.com/aarzu" in client.get("/menu").text
@@ -583,7 +597,8 @@ def test_owner_assistant_edits_menu_recipes_and_media(client):
     agent.set_client(fake)
     client.post("/api/chat/send", json={"text": "tiffin?"}, headers={"X-CSRF": csrf(client)})
     system = fake.calls[0]["system"]
-    assert "Mon to Fri lunch boxes" in system and "Skill: customer-service" in system and "COLLECTION ONLY" in system
+    assert "Mon to Fri lunch boxes" in system and "Skill: customer-service" in system
+    assert "We DELIVER" in system and "at least £50.00 of food" in system and "COLLECTION ONLY" not in system
     # photo sent to the assistant is saved to the library and shown to the model, then not stored
     png = b"\x89PNG\r\n\x1a\n" + b"0" * 100
     fake = FakeClaude([[{"type": "tool_use", "id": "c1", "name": "list_media", "input": {}}], [{"type": "text", "text": "Which dish is it for?"}]])
@@ -651,7 +666,7 @@ def test_tiffin_enquiry_and_dish_video(client):
 
 def test_landing_page_and_phone_layout(client):
     h = client.get("/").text
-    for bit in ("Order now", "Popular dishes", "How to order", "Questions and answers", "application/ld+json", "Open for orders", 'id="lp-sticky"'):
+    for bit in ("Order now", "Popular dishes", "How to order", "and answers", "application/ld+json", "Open for orders", 'id="lp-sticky"'):
         assert bit in h, bit
     assert shop.earliest_day() and shop.earliest_day() in h
     db.set_setting("accepting_orders", False)

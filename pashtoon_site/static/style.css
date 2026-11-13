@@ -459,7 +459,7 @@ body.has-basket .chat-fab { bottom: 86px; }
 .menu-search { width: 100%; max-width: 520px; padding: 12px 18px; border-radius: 9999px; border: 1.5px solid rgba(0,0,0,.2); font: 16px var(--text); background: #fff; }
 .menu-search:focus { outline: 2px solid var(--forest); border-color: var(--forest); }
 .tabs.chips { gap: 8px; padding: 10px 0 0; position: static; margin: 0; background: none; }
-.tabs.chips a { font: 600 15px var(--text); padding: 9px 16px; border-radius: 9999px; border: 1.5px solid var(--forest); color: var(--forest); background: transparent; }
+.tabs.chips a { font-family: var(--display); font-size: 19px; padding: 7px 16px; border-radius: 9999px; border: 1.5px solid var(--forest); color: var(--forest); background: transparent; }
 .tabs.chips a.on { background: var(--forest); color: var(--cream); }
 .tabs.chips a.on::after { display: none; }
 .lp-order-link { text-decoration: underline; color: var(--forest); font-weight: 700; }

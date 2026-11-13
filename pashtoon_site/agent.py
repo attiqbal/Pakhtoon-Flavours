@@ -439,6 +439,10 @@ def _facts() -> str:
              f"Taking orders: {'yes' if st['accepting_orders'] else 'NO, paused'}. Pre-orders only: 24 hours' notice, 48 for Raan Pulao."]
     if not st["offers_delivery"]:
         lines.append("We are COLLECTION ONLY for now: no delivery from the kitchen.")
+    else:
+        m = shop.delivery_minimum()
+        lines.append("We DELIVER ourselves as well as collection. " + (f"Delivery needs at least {shop.money(m)} of food; " if m else "")
+                     + "collection has no minimum order. Delivery charges:\n" + shop.delivery_bands_text())
     partners = shop.partners_on()
     if partners:
         lines.append("Customers who want delivery can also order from us on: " + ", ".join(
