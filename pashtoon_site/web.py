@@ -71,14 +71,9 @@ def is_kitchen(request: Request) -> bool:
     return is_owner(request) or bool(request.session.get("kitchen"))
 
 
-PASSWORD_PATHS = ("/owner/password", "/owner/settings/password", "/owner/logout")
-
-
 def need_owner(request: Request) -> None:
     if not is_owner(request):
         raise HTTPException(303, headers={"Location": "/owner/login?next=" + urlquote(request.url.path)})
-    if db.get_setting("owner_must_change_password") and request.url.path not in PASSWORD_PATHS:
-        raise HTTPException(303, headers={"Location": "/owner/password"})      # temporary password: choose your own first
 
 
 def path_is_private(path: str) -> bool:
@@ -171,6 +166,19 @@ def wa_link(phone: str, text: str) -> str:
     return f"https://wa.me/{shop.wa_number(phone)}?text={urlquote(text)}"
 
 
+def ensure_owner() -> None:
+    """Make the owner account if it is missing. Never replaces an existing email or password."""
+    if not db.get_setting("owner_login_email"):
+        email = config.OWNER_EMAIL or menu_data.OWNER_EMAIL
+        db.set_setting("owner_login_email", email)
+        if not db.get_setting("owner_email"):
+            db.set_setting("owner_email", email)        # order alerts go here until she picks another
+    if not db.get_setting("owner_password_hash"):
+        password = config.OWNER_PASSWORD or menu_data.STARTER_PASSWORD
+        db.set_setting("owner_password_hash", bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
+        db.set_setting("owner_starter_password", password == menu_data.STARTER_PASSWORD)
+
+
 # ---------------------------------------------------------------- app
 
 def create_app(db_path: str | None = None) -> FastAPI:
@@ -178,13 +186,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db.use(db_path)
     db.init()
     shop.install()
-    if config.OWNER_EMAIL and not db.get_setting("owner_login_email"):
-        db.set_setting("owner_login_email", config.OWNER_EMAIL)
-        if not db.get_setting("owner_email"):
-            db.set_setting("owner_email", config.OWNER_EMAIL)       # alerts go here until she picks another
-    if config.OWNER_PASSWORD and not db.get_setting("owner_password_hash"):
-        db.set_setting("owner_password_hash", bcrypt.hashpw(config.OWNER_PASSWORD.encode(), bcrypt.gensalt()).decode())
-        db.set_setting("owner_must_change_password", config.OWNER_MUST_CHANGE)
+    ensure_owner()
 
     tasks.start()
     app = FastAPI(title="Pakhtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
@@ -221,6 +223,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         featured = [i for i in items if i["image"] and i["category"] in ("mains", "special") and i["options"]]
         return render(request, "public/home.html", featured=featured, bands=shop.delivery_bands_text().splitlines(),
                       clips=[i for i in items if i["video"]], tiffin=next((i for i in items if i["category"] == "tiffin"), None),
+                      tiffin_plans=tiffin.plans(),
                       earliest=shop.earliest_day(), pay_methods=payments.methods(),
                       from_price=min((o["price"] for i in featured for o in i["options"]), default=0))
 
@@ -501,14 +504,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
             return render(request, "owner/login.html", has_password=bool(stored), error="That email or password isn't right.")
         request.session.clear()
         request.session["owner"] = True
-        if db.get_setting("owner_must_change_password"):
-            return RedirectResponse("/owner/password", status_code=303)
         return RedirectResponse(next_ if next_.startswith("/owner") else "/owner", status_code=303)
 
     @app.get("/owner/password", response_class=HTMLResponse)
     def password_page(request: Request):
         need_owner(request)
-        return render(request, "owner/password.html", forced=bool(db.get_setting("owner_must_change_password")))
+        return render(request, "owner/password.html")
 
     @app.post("/owner/logout")
     async def logout(request: Request):
@@ -1007,9 +1008,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if new == current:
             return back(page, error="Choose a password different from the current one.")
         db.set_setting("owner_password_hash", bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode())
-        if db.get_setting("owner_must_change_password"):
-            db.set_setting("owner_must_change_password", False)
-            return back("/owner", "Password changed. Welcome!")
+        db.set_setting("owner_starter_password", False)
         return back(page, "Password changed.")
 
     @app.post("/owner/settings/new-links")

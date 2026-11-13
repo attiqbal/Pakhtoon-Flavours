@@ -36,7 +36,7 @@ assistant that answers customers. It is a standalone app with its own database, 
 
 ## The owner account
 
-Set `OWNER_EMAIL` and a temporary `OWNER_PASSWORD` in `.env`, then run `python -m pashtoon_site.owner_setup` (or just start a fresh site with `OWNER_MUST_CHANGE=1`). She signs in with her email and the temporary password and is asked to choose her own password before she can use the dashboard. Run the command again to reset a forgotten password.
+The owner login is created automatically the first time the site starts: **aarzuehtishaam@gmail.com** with the starter password **AshtonUnderlyne**. There is nothing to set up. She can change the password any time in the dashboard under **Password** (the dashboard shows a reminder until she does). Because the starter password is written here, she should choose her own as soon as the site is live. If she forgets it, `python -m pashtoon_site.owner_setup` puts the starter password back.
 
 ## On a phone
 
@@ -47,15 +47,15 @@ it then opens like an app.
 
 ## Run it
 
-**GitHub Codespaces**: open the repository in a Codespace. It installs everything and runs `start.sh`, which prints the website address and her first password. The site runs on port 8000.
+**GitHub Codespaces**: open the repository in a Codespace. It installs everything and runs `start.sh`, which prints the website address. The site runs on port 8000.
 
 **Your own computer** (Python 3.11 or newer):
 
 ```bash
-bash start.sh          # creates .env with a password, installs, starts on http://localhost:8000
+bash start.sh          # creates .env, installs, starts on http://localhost:8000
 ```
 
-Then open `/owner` and log in with the password the script printed. Change it in Settings.
+Then open `/owner` and log in with the owner email and starter password (see The owner account below).
 
 To switch on the AI assistant, put a Claude API key from console.anthropic.com in `.env` as `ANTHROPIC_API_KEY=...` and run `bash start.sh` again. Everything else works without it.
 

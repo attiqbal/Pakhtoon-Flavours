@@ -4,8 +4,7 @@
 .qm{max-width:760px;margin:0 auto;padding:28px 18px 130px}
 .qm h1{font-size:clamp(2rem,8vw,3rem);margin:4px 0 6px}
 .qm .lead{margin:0 0 14px;color:var(--muted,#555)}
-.qm .rules{background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:14px;padding:12px 16px;margin:14px 0 6px;font-size:.95rem}
-.qm .rules b{color:#a3312a}
+.qsec{scroll-margin-top:150px}
 .qm h2{font-size:1.5rem;margin:30px 0 6px;border-bottom:2px solid currentColor;padding-bottom:4px}
 .qm h2 small{font-weight:400;font-size:.55em;opacity:.75;margin-left:6px}
 .qd{display:grid;grid-template-columns:1fr;gap:4px;padding:14px 0;border-bottom:1px solid rgba(0,0,0,.1)}
@@ -26,16 +25,18 @@
   <span class="eyebrow">{{ st.tagline }}</span>
   <h1>{{ st.shop_name }}</h1>
   <p class="lead">Our full menu on one page. Add what you like and order here: no sign-up needed.</p>
-  <div class="rules">
-    Pre-orders with at least 24 hours' notice (48 for Raan Pulao).<br>
-    {% if st.offers_collection %}<b>Collection</b> from {{ st.kitchen_postcode }}: no minimum order.{% endif %}
-    {% if st.offers_delivery %}{% if st.offers_collection %}<br>{% endif %}<b>Delivery</b>: minimum order <b>{{ money(min_delivery) }}</b>{% if min_delivery %} (food, before the delivery charge){% endif %}.{% else %}<br>Collection only for now.{% endif %}
-  </div>
+  {% include "public/_order_info.html" %}
   {% if not st.accepting_orders %}<div class="alert info">We're not taking new orders right now. You can still look at the menu.</div>{% endif %}
+  <div class="menu-tools">
+    <input type="search" class="menu-search" data-menu-search placeholder="Search dishes, e.g. lamb, pulao, nan" aria-label="Search the menu" autocomplete="off">
+    <div class="tabs chips" id="tabs">{% for key, label, items in sections %}<a href="#s-{{ key }}" data-tab="{{ key }}" {% if loop.first %}class="on"{% endif %}>{{ label.split(' · ')[0] }}</a>{% endfor %}</div>
+  </div>
+  <p class="muted hide" data-menu-empty>No dishes match that. Try another word, or <button type="button" class="link" data-menu-clear>show the whole menu</button>.</p>
   {% for key, label, items in sections %}
+  <section id="s-{{ key }}" data-section="{{ key }}" class="qsec">
   <h2>{{ label.split(' · ')[0] }}{% if ' · ' in label %}<small>{{ label.split(' · ')[1] }}</small>{% endif %}</h2>
   {% for it in items %}
-  <article class="qd {% if it.image %}pic{% endif %}" id="{{ it.slug }}">
+  <article class="qd {% if it.image %}pic{% endif %}" id="{{ it.slug }}" data-dish="{{ (it.name ~ ' ' ~ it.description ~ ' ' ~ it.options|map(attribute='label')|join(' '))|lower }}">
     {% if it.image %}<img class="ph" src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">{% endif %}
     <div><h3>{{ it.name }}</h3>{% if it.notice_hours > 24 %}<span class="notice">{{ it.notice_hours }} hours' notice</span>{% endif %}</div>
     <p>{{ it.description }}</p>
@@ -51,6 +52,7 @@
     </div>
   </article>
   {% endfor %}
+  </section>
   {% endfor %}
   <p class="small muted" style="margin-top:26px">Questions? WhatsApp <a href="https://wa.me/{{ wa(st.whatsapp) }}">{{ st.whatsapp }}</a> or use the chat button.</p>
 </div>

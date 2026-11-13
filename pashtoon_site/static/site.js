@@ -54,6 +54,24 @@
     opt.querySelector("[data-inc]").addEventListener("click", () => PF.setQty(opt, Number(opt.querySelector("[data-q]").textContent) + 1));
     opt.querySelector("[data-dec]").addEventListener("click", () => PF.setQty(opt, Number(opt.querySelector("[data-q]").textContent) - 1));
   });
+  // menu search: hide dishes that don't match, and sections left empty
+  const search = document.querySelector("[data-menu-search]");
+  if (search) {
+    const empty = document.querySelector("[data-menu-empty]");
+    const run = () => {
+      const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+      let shown = 0;
+      document.querySelectorAll("[data-dish]").forEach((d) => {
+        const hit = words.every((w) => d.dataset.dish.includes(w));
+        d.classList.toggle("hide", !hit); if (hit) shown++;
+      });
+      document.querySelectorAll("[data-section]").forEach((sec) => sec.classList.toggle("hide", !sec.querySelector("[data-dish]:not(.hide)")));
+      if (empty) empty.classList.toggle("hide", shown > 0);
+    };
+    search.addEventListener("input", run);
+    const clear = document.querySelector("[data-menu-clear]");
+    if (clear) clear.addEventListener("click", () => { search.value = ""; run(); search.focus(); });
+  }
   const tabs = document.querySelectorAll("#tabs a");
   if (tabs.length && "IntersectionObserver" in window) {
     const io = new IntersectionObserver((entries) => {

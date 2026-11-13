@@ -55,6 +55,11 @@ CATEGORIES = [("mains", "Mains"), ("special", "Special order · 48 hours' notice
 # Delivery partners she can switch on later. Orders from them can also be posted to /api/partner-orders.
 PARTNERS = [("ubereats", "Uber Eats"), ("deliveroo", "Deliveroo"), ("justeat", "Just Eat")]
 
+# The owner's login. Made on first start so there is nothing to set up; she can change the password any time in
+# the dashboard (Password). The starter password is not secret (it is in this file), so she should choose her own.
+OWNER_EMAIL = "aarzuehtishaam@gmail.com"
+STARTER_PASSWORD = "AshtonUnderlyne"
+
 DEFAULT_SETTINGS = {
     "shop_name": "Pakhtoon Flavours",
     "tagline": "Traditional Khyber Pukhtunkhwa cuisine, home-cooked to order",
@@ -88,7 +93,7 @@ DEFAULT_SETTINGS = {
     "hygiene_link": "https://ratings.food.gov.uk",
     "announcement": "",
     "owner_login_email": "",           # the owner signs in with this email and her password
-    "owner_must_change_password": False,
+    "owner_starter_password": False,   # True while she still uses the starter password (shows a reminder)
     "ai_enabled": True,
     "assistant_name": "Zara",
     "ai_model": "",                   # empty = CLAUDE_MODEL from .env (Opus by default, the strongest model)

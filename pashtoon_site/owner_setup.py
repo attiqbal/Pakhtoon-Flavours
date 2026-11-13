@@ -1,31 +1,20 @@
-"""Create or reset the website owner from the command line.
+"""Reset the owner's login from the command line, for when she has forgotten her password.
 
-    OWNER_EMAIL=owner@example.com OWNER_PASSWORD='temporary-password' python -m pashtoon_site.owner_setup
+    python -m pashtoon_site.owner_setup
 
-Reads the email and temporary password from the environment (or .env, loaded by start.sh), never from the code. The
-owner must choose a new password at the first login. Run it again any time to reset a forgotten password."""
+Puts the login back to the owner email and starter password in menu_data.py. Normally nothing needs running: the
+owner account is made automatically the first time the site starts."""
 import sys
 
-import bcrypt
-
-from . import config, db
+from . import db, web
 
 
 def main() -> int:
-    email, password = config.OWNER_EMAIL, config.OWNER_PASSWORD
-    if not email or "@" not in email:
-        print("Set OWNER_EMAIL to the owner's email address.", file=sys.stderr)
-        return 1
-    if len(password) < 8:
-        print("Set OWNER_PASSWORD to a temporary password of at least 8 characters.", file=sys.stderr)
-        return 1
     db.init()
-    db.set_setting("owner_login_email", email)
-    if not db.get_setting("owner_email"):
-        db.set_setting("owner_email", email)        # order alerts go here until she picks another
-    db.set_setting("owner_password_hash", bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
-    db.set_setting("owner_must_change_password", True)
-    print(f"Owner set to {email}. They will be asked to choose a new password at first login.")
+    for key in ("owner_login_email", "owner_password_hash"):
+        db.execute("DELETE FROM settings WHERE key=?", (key,))
+    web.ensure_owner()
+    print(f"Owner login reset: {db.get_setting('owner_login_email')} with the starter password. Change it in the dashboard under Password.")
     return 0
 
 

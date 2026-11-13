@@ -1,5 +1,5 @@
 # Fly.io: `fly launch --no-deploy --copy-config`, then `fly volumes create pashtoon_data --size 1`,
-# `fly secrets set OWNER_PASSWORD=... SESSION_SECRET=... ANTHROPIC_API_KEY=...` and `fly deploy`.
+# `fly secrets set SESSION_SECRET=... ANTHROPIC_API_KEY=...` and `fly deploy`.
 app = "pashtoon-flavours"
 primary_region = "lhr"
 

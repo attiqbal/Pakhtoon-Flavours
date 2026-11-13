@@ -6,7 +6,7 @@ Pick one. All three keep everything in one folder (`/data`): the database, uploa
 
 1. Get a cheap VPS (Hetzner, DigitalOcean, any Ubuntu server) and install Docker.
 2. Point your domain's A record at the server.
-3. Copy the repo to the server and make `.env` (see `.env.example`): `DOMAIN=yourdomain.co.uk`, `OWNER_PASSWORD`, `SESSION_SECRET` (a long random string), `ANTHROPIC_API_KEY`, and whichever of Meta, Stripe, SMTP you use.
+3. Copy the repo to the server and make `.env` (see `.env.example`): `DOMAIN=yourdomain.co.uk`, `SESSION_SECRET` (a long random string), `ANTHROPIC_API_KEY`, and whichever of Meta, Stripe, SMTP you use.
 4. `docker compose up -d`. Caddy gets the HTTPS certificate by itself. Open `https://yourdomain.co.uk/owner`.
 5. Update later: `git pull && docker compose up -d --build`. The data volume is kept.
 
@@ -23,9 +23,7 @@ Deploy the Dockerfile, add a **persistent disk mounted at `/data`**, set the env
 | Variable | What it does |
 |---|---|
 | `PASHTOON_BASE_URL` | The public address (https). Used in links, Stripe and Meta callbacks. |
-| `OWNER_EMAIL` | The owner's login email. |
-| `OWNER_PASSWORD` | Temporary first password; the owner must change it at first login. To apply or reset on a site that already has data: put both in `.env`, then run `docker compose exec site python -m pashtoon_site.owner_setup` (or `python -m pashtoon_site.owner_setup` after `set -a; . ./.env; set +a`). Remove the password from `.env` afterwards. |
-| `OWNER_MUST_CHANGE` | `1` makes a first-start password temporary too. |
+| `OWNER_EMAIL`, `OWNER_PASSWORD` | Optional. The owner login is created automatically on first start (see README); set these before the first start only if you want a different email or first password. |
 | `SESSION_SECRET` | Long random string so logins survive restarts. |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` + `AI_PROVIDER=openai` | The assistant. |
 | `SMTP_HOST/PORT/USER/PASSWORD/FROM` | Email alerts and the weekly emailed backup. |

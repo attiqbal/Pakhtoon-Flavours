@@ -15,6 +15,7 @@ from datetime import date
 from pashtoon_site import agent, config, db, geo, meta, payments, shop, web
 
 PASSWORD = "kitchen-secret-1"
+EMAIL = "aarzuehtishaam@gmail.com"
 POSTCODES = {"OL7 9TG": (53.4875, -2.1029), "OL6 6AA": (53.4930, -2.0920), "M1 1AE": (53.4794, -2.2453), "WA1 1AA": (53.3900, -2.5900)}
 
 
@@ -41,7 +42,7 @@ def csrf(c, path="/"):
 
 
 def login(c):
-    r = c.post("/owner/login", data={"password": PASSWORD, "csrf": csrf(c, "/owner/login"), "next": "/owner"})
+    r = c.post("/owner/login", data={"email": EMAIL, "password": PASSWORD, "csrf": csrf(c, "/owner/login"), "next": "/owner"})
     assert r.status_code == 303 and r.headers["location"] == "/owner"
 
 
@@ -650,7 +651,7 @@ def test_tiffin_enquiry_and_dish_video(client):
 
 def test_landing_page_and_phone_layout(client):
     h = client.get("/").text
-    for bit in ("See the menu and order", "Watch it cooked", "Good to know", "application/ld+json", "Taking orders now", 'id="lp-sticky"'):
+    for bit in ("Order now", "Popular dishes", "How to order", "Questions and answers", "application/ld+json", "Open for orders", 'id="lp-sticky"'):
         assert bit in h, bit
     assert shop.earliest_day() and shop.earliest_day() in h
     db.set_setting("accepting_orders", False)
@@ -975,56 +976,59 @@ def test_menu_image_rate_limited(client):
 
 # ---------------------------------------------------------------- owner account and password change
 
-def test_owner_email_login_and_forced_password_change(client, monkeypatch):
-    db.set_setting("owner_login_email", "aarzuehtishaam@gmail.com")
-    db.set_setting("owner_must_change_password", True)
+def test_owner_email_login_and_optional_password_change(client):
     form = lambda **kw: {"csrf": csrf(client, "/owner/login"), "next": "/owner", **kw}
     assert "email or password" in client.post("/owner/login", data=form(password=PASSWORD)).text                     # email is needed
     assert "email or password" in client.post("/owner/login", data=form(password=PASSWORD, email="someone@else.com")).text
-    assert "email or password" in client.post("/owner/login", data=form(password="wrong-password", email="aarzuehtishaam@gmail.com")).text
+    assert "email or password" in client.post("/owner/login", data=form(password="wrong-password", email=EMAIL)).text
     r = client.post("/owner/login", data=form(password=PASSWORD, email="  AarzuEhtishaam@gmail.com "))
-    assert r.status_code == 303 and r.headers["location"] == "/owner/password"
-    for path in ("/owner", "/owner/orders", "/owner/menu", "/owner/share"):                                   # nothing else until changed
-        assert client.get(path).headers["location"] == "/owner/password"
-    assert client.get("/owner/password").status_code == 200
+    assert r.status_code == 303 and r.headers["location"] == "/owner"                                         # straight in, no forced change
+    assert client.get("/owner/orders").status_code == 200
+    page = client.get("/owner/password")
+    assert page.status_code == 200 and 'href="/owner/password"' in client.get("/owner").text                 # easy to find in the menu
     tok = csrf(client, "/owner/password")
     bad = [("wrong", "new-password-1", "new-password-1"), (PASSWORD, "short", "short"), (PASSWORD, "new-password-1", "different-1"),
            (PASSWORD, PASSWORD, PASSWORD)]
     for cur, new, conf in bad:
         r = client.post("/owner/settings/password", data={"csrf": tok, "current": cur, "new": new, "confirm": conf, "from": "/owner/password"})
         assert r.headers["location"].startswith("/owner/password?error=")
-    assert db.get_setting("owner_must_change_password")
     r = client.post("/owner/settings/password", data={"csrf": tok, "current": PASSWORD, "new": "my-own-password-9", "confirm": "my-own-password-9", "from": "/owner/password"})
-    assert r.headers["location"].startswith("/owner?msg=")
-    assert not db.get_setting("owner_must_change_password") and client.get("/owner").status_code == 200
+    assert r.headers["location"].startswith("/owner/password?msg=")
     client.post("/owner/logout", data={"csrf": csrf(client, "/owner")})
-    r = client.post("/owner/login", data=form(password="my-own-password-9", email="aarzuehtishaam@gmail.com"))
-    assert r.headers["location"] == "/owner"                                                                  # new password works, no more prompt
-    assert client.post("/owner/login", data=form(password=PASSWORD, email="aarzuehtishaam@gmail.com")).status_code == 200
+    assert client.post("/owner/login", data=form(password="my-own-password-9", email=EMAIL)).headers["location"] == "/owner"
+    assert client.post("/owner/login", data=form(password=PASSWORD, email=EMAIL)).status_code == 200          # old one no longer works
 
 
-def test_owner_setup_command_reads_env_and_never_stores_plain_password(client, monkeypatch, capsys):
-    from pashtoon_site import owner_setup
-    monkeypatch.setattr(config, "OWNER_EMAIL", "aarzuehtishaam@gmail.com")
-    monkeypatch.setattr(config, "OWNER_PASSWORD", "temp-pass-123456")
-    assert owner_setup.main() == 0
-    assert db.get_setting("owner_login_email") == "aarzuehtishaam@gmail.com" and db.get_setting("owner_must_change_password") is True
-    assert "temp-pass-123456" not in json.dumps(db.q("SELECT * FROM settings")) and "temp-pass" not in capsys.readouterr().out
-    r = client.post("/owner/login", data={"csrf": csrf(client, "/owner/login"), "email": "aarzuehtishaam@gmail.com", "password": "temp-pass-123456", "next": "/owner"})
-    assert r.headers["location"] == "/owner/password"
-    monkeypatch.setattr(config, "OWNER_PASSWORD", "x")
-    assert owner_setup.main() == 1                                                                            # too short, refused
+def test_owner_is_created_on_first_start_with_starter_password(tmp_path, monkeypatch):
+    from pashtoon_site import menu_data
     monkeypatch.setattr(config, "OWNER_EMAIL", "")
-    assert owner_setup.main() == 1
-
-
-def test_first_start_creates_owner_from_env(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "OWNER_EMAIL", "aarzuehtishaam@gmail.com")
-    monkeypatch.setattr(config, "OWNER_PASSWORD", "temp-pass-123456")
-    monkeypatch.setattr(config, "OWNER_MUST_CHANGE", True)
+    monkeypatch.setattr(config, "OWNER_PASSWORD", "")
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path / "u"))
+    monkeypatch.setattr(config, "BACKGROUND", False)
+    web._hits.clear()
+    app = web.create_app(str(tmp_path / "fresh.db"))
+    assert db.get_setting("owner_login_email") == EMAIL and db.get_setting("owner_starter_password") is True
+    assert menu_data.STARTER_PASSWORD not in json.dumps(db.q("SELECT * FROM settings"))                       # only the hash is stored
+    with TestClient(app, follow_redirects=False) as c:
+        data = {"csrf": csrf(c, "/owner/login"), "email": EMAIL, "password": menu_data.STARTER_PASSWORD, "next": "/owner"}
+        assert c.post("/owner/login", data=data).headers["location"] == "/owner"
+        assert "still using the starter password" in c.get("/owner").text                                     # a reminder, not a block
+        tok = csrf(c, "/owner/password")
+        c.post("/owner/settings/password", data={"csrf": tok, "current": menu_data.STARTER_PASSWORD, "new": "her-own-pass-22", "confirm": "her-own-pass-22", "from": "/owner/password"})
+        assert "still using the starter password" not in c.get("/owner").text
+    # starting again never replaces her password or email
+    db.set_setting("owner_login_email", "new@example.com")
     web.create_app(str(tmp_path / "fresh.db"))
-    assert db.get_setting("owner_login_email") == "aarzuehtishaam@gmail.com" and db.get_setting("owner_must_change_password") is True
+    assert db.get_setting("owner_login_email") == "new@example.com" and db.get_setting("owner_starter_password") is False
+    stored = db.get_setting("owner_password_hash")
+    import bcrypt
+    assert bcrypt.checkpw(b"her-own-pass-22", stored.encode())
+    # the reset command is for a forgotten password
+    from pashtoon_site import owner_setup
+    assert owner_setup.main() == 0
+    assert db.get_setting("owner_login_email") == EMAIL and bcrypt.checkpw(menu_data.STARTER_PASSWORD.encode(), db.get_setting("owner_password_hash").encode())
+
 
 # ---------------------------------------------------------------- Google Calendar (Google is faked, no network)
 

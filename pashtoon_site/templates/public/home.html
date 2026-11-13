@@ -28,42 +28,66 @@
     {% else %}<img src="{{ image_url(hero.image) if hero else '/static/img/dampukh.jpg' }}" alt="">{% endif %}
   </div>
   <div class="lp-hero-panel">
-    <span class="eyebrow">{{ st.area }} · home kitchen</span>
-    <h1>Slow-cooked,<br><span class="thin">the Peshawar way.</span></h1>
-    <p class="lp-lead">Dam Pukh, Namkeen Gosht, Bannu Pulao and Raan Pulao, cooked at home to order. Pre-order online for collection{% if st.offers_delivery %} or delivery{% endif %}.</p>
-    <div class="row lp-ctas"><a class="btn primary big" href="/menu">See the menu and order</a>
-      <button type="button" class="btn big lp-chat" data-chat>Ask us anything</button></div>
-    {% if earliest %}<p class="lp-next"><span class="live-dot" aria-hidden="true"></span> Taking orders now · earliest {{ earliest }}</p>
+    <span class="eyebrow">Home kitchen in {{ st.area.split(',')[0] }}</span>
+    <h1>Home-cooked Pashtun food,<br><span class="thin">made fresh for your order.</span></h1>
+    <p class="lp-lead">Dam Pukh, Namkeen Gosht, Bannu Pulao, Karahi and more. Order online a day ahead, then collect{% if st.offers_delivery %} or have it delivered{% endif %}.</p>
+    <div class="row lp-ctas"><a class="btn primary big" href="/menu">Order now</a>
+      <button type="button" class="btn big lp-chat" data-chat>Ask a question</button></div>
+    {% if earliest %}<p class="lp-next"><span class="live-dot" aria-hidden="true"></span> Open for orders · next available day: {{ earliest }}</p>
     {% else %}<p class="alert info" style="margin:18px 0 0">We're not taking new orders right now. Message us and we'll let you know when we reopen.</p>{% endif %}
     {{ hygiene_badge(st.hygiene_rating, st.hygiene_link, "lp-hygiene") }}
   </div>
 </section>
 
 <section class="lp-facts" aria-label="At a glance"><div class="wrap">
-  <div><b>Pre-order</b><span>24 hours ahead, 48 for Raan Pulao</span></div>
-  <div><b>Collection{% if st.offers_delivery %} or delivery{% endif %}</b><span>From {{ st.kitchen_postcode }}{% if partners %}, or on {{ partners|map(attribute='name')|join(' and ') }}{% endif %}</span></div>
-  <div><b>Pay your way</b><span>{{ pay_methods|map(attribute=1)|join(', ') }}</span></div>
-  <div><b>Ask us</b><span>Chat here or WhatsApp {{ st.whatsapp }}</span></div>
+  <div><b>Order a day ahead</b><span>24 hours' notice, 48 for Raan Pulao</span></div>
+  <div><b>Collection</b><span>From {{ st.kitchen_postcode }}, {{ st.slot_start }} to {{ st.slot_end }}. No minimum order</span></div>
+  <div><b>Delivery</b><span>{% if st.offers_delivery %}From £{{ '%.2f'|format(st.delivery_bands[0][1]) }}{% if st.delivery_minimum %}. Minimum order {{ money(st.delivery_minimum) }}{% endif %}{% else %}Not yet. Collection only for now{% endif %}{% if partners %}. Also on {{ partners|map(attribute='name')|join(' and ') }}{% endif %}</span></div>
+  <div><b>Pay by</b><span>{{ pay_methods|map(attribute=1)|join(', ') }}</span></div>
 </div></section>
 
-<section class="band"><div class="wrap">
-  <div class="row between lp-head"><div><span class="eyebrow">Signature dishes</span><h2>Made to order,<br><span class="thin">made with patience</span></h2></div>
-    <a class="ghost" href="/menu">Full menu{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
+<section class="band" id="dishes"><div class="wrap">
+  <div class="row between lp-head"><div><span class="eyebrow">Menu</span><h2>Popular dishes</h2></div>
+    <a class="ghost" href="/menu">See the full menu{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
   <div class="lp-rail">
     {% for it in featured[:8] %}
     <a class="dish lp-card" href="/menu#{{ it.slug }}" style="text-decoration:none">
       {% if it.notice_hours > 24 %}<span class="badge-lime">{{ it.notice_hours }} hours' notice</span>{% endif %}
       <img src="{{ image_url(it.image) }}" alt="{{ it.name }}" loading="lazy">
       <div class="body"><h3>{{ it.name }}</h3><p>{{ it.description }}</p>
-        <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b></p></div>
+        <p class="small"><b>From {{ money(it.options|map(attribute='price')|min) }}</b> · <span class="lp-order-link">Order</span></p></div>
     </a>
     {% endfor %}
   </div>
 </div></section>
 
+<section class="band sage" id="how"><div class="wrap">
+  <span class="eyebrow">How to order</span><h2>Three easy steps</h2>
+  <div class="steps">
+    <div><div class="n">1</div><h3>Pick your dishes</h3><p class="muted">Add dishes to your basket from the menu. Add nan, chutney and salad if you like.</p></div>
+    <div><div class="n">2</div><h3>Choose a day and time</h3><p class="muted">At least 24 hours ahead (48 for Raan Pulao). Choose collection{% if st.offers_delivery %} or delivery{% endif %}.</p></div>
+    <div><div class="n">3</div><h3>{{ 'Collect' if not st.offers_delivery else 'Collect or get it delivered' }}</h3><p class="muted">Pay by {{ pay_methods|map(attribute=1)|join(', ')|lower }}. You get an order number straight away and a WhatsApp message when it's ready.</p></div>
+  </div>
+  <a class="btn primary big" href="/menu" style="margin-top:36px">Order now</a>
+</div></section>
+
+<section class="band sand" id="delivery"><div class="wrap split">
+  <div>
+    <span class="eyebrow">Collection{% if st.offers_delivery %} and delivery{% endif %}</span><h2>{% if st.offers_delivery %}Collect, or we deliver{% else %}Collect from {{ st.kitchen_postcode }}{% endif %}</h2>
+    <div class="summary-line"><span><b>Collection</b></span><span>{{ st.kitchen_postcode }} · no minimum order</span></div>
+    <div class="summary-line"><span><b>Times</b></span><span>{{ st.slot_start }} to {{ st.slot_end }}</span></div>
+    {% if st.offers_delivery %}{% for b in bands %}<div class="summary-line"><span>{% if loop.first %}<b>Delivery</b>{% endif %}</span><span>{{ b }}</span></div>{% endfor %}
+    {% else %}<div class="summary-line"><span><b>Delivery</b></span><span>Not available yet</span></div>{% endif %}
+    <p class="muted" style="margin-top:14px">We send the exact collection address with your order confirmation.</p>
+    {% if partners %}<p><b>Also on</b>: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+    <a class="btn primary" href="/menu" style="margin-top:12px">Order now</a>
+  </div>
+  <img src="/static/img/raan.jpg" alt="Peshawari Raan Pulao" loading="lazy">
+</div></section>
+
 {% if clips %}
 <section class="band forest"><div class="wrap">
-  <div class="row between lp-head"><div><span class="eyebrow">From our kitchen</span><h2>Watch it cooked</h2></div>
+  <div class="row between lp-head"><div><span class="eyebrow">Videos</span><h2>See how we cook</h2></div>
     <a class="ghost" style="color:var(--cream)" href="https://instagram.com/{{ st.instagram }}" target="_blank" rel="noopener">More on Instagram</a></div>
   <div class="lp-rail lp-reels">
     {% for it in clips[:6] %}
@@ -76,51 +100,31 @@
 </div></section>
 {% endif %}
 
-<section class="band sage" id="how"><div class="wrap">
-  <span class="eyebrow">How it works</span><h2>Order a day ahead.<br><span class="thin">We cook it fresh.</span></h2>
-  <div class="steps">
-    <div><div class="n">1</div><h3>Choose your dishes</h3><p class="muted">Per person or family portions. Add nan, chutney and salad.</p></div>
-    <div><div class="n">2</div><h3>Pick a day and time</h3><p class="muted">At least 24 hours ahead, 48 hours for Raan Pulao. Collection{% if st.offers_delivery %} or delivery{% endif %}.</p></div>
-    <div><div class="n">3</div><h3>Pay your way</h3><p class="muted">{{ pay_methods|map(attribute=1)|join(', ') }}. You get your order number and a tracking link straight away.</p></div>
-    <div><div class="n">4</div><h3>Collect and enjoy</h3><p class="muted">We confirm on WhatsApp and let you know when it's ready.</p></div>
-  </div>
-  <a class="btn primary big" href="/menu" style="margin-top:36px">Start your order</a>
-</div></section>
-
 {% if tiffin %}
 <section class="band"><div class="wrap split">
-  <div><span class="eyebrow">Tiffin service</span><h2>Home cooking,<br><span class="thin">on your schedule.</span></h2>
+  <div><span class="eyebrow">Tiffin</span><h2>Weekly home-cooked meals</h2>
     <p class="muted">{{ tiffin.description }}</p>
-    <button type="button" class="btn primary" data-ask="{{ tiffin.name }}">Ask about tiffin plans</button></div>
+    {% if tiffin_plans %}<a class="btn primary" href="/tiffin">See tiffin plans</a>{% else %}<button type="button" class="btn primary" data-ask="{{ tiffin.name }}">Ask about tiffin</button>{% endif %}</div>
   <img src="{{ image_url(featured[1].image) if featured|length > 1 else '/static/img/pulao.jpg' }}" alt="" loading="lazy">
 </div></section>
 {% endif %}
 
-<section class="band sand" id="delivery"><div class="wrap split">
-  <div>
-    <span class="eyebrow">Collection{% if st.offers_delivery %} and delivery{% endif %}</span><h2>Collect from {{ st.kitchen_postcode }}{% if st.offers_delivery %}<br><span class="thin">or we'll bring it to you.</span>{% endif %}</h2>
-    <p class="muted">We send the exact address with your confirmation.</p>
-    {% if partners %}<p><b>Delivery apps</b>: {% for p in partners %}{% if p.url %}<a class="ghost" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
-    {% if st.offers_delivery %}<p><b>Delivery charges</b></p>{% for b in bands %}<div class="summary-line">{{ b }}</div>{% endfor %}{% endif %}
-    <a class="btn primary" href="/menu" style="margin-top:12px">Start your order</a>
-  </div>
-  <img src="/static/img/raan.jpg" alt="Peshawari Raan Pulao" loading="lazy">
-</div></section>
-
-<section class="band"><div class="wrap split">
+<section class="band{% if tiffin %} sage{% endif %}" id="about"><div class="wrap split">
   <img src="/static/img/khyber.jpg" alt="Khyber Pass gate" loading="lazy">
-  <div><span class="eyebrow">Our kitchen</span><h2>A taste of<br><span class="thin">Khyber Pukhtunkhwa</span></h2>
-    <p class="muted">Pakhtoon Flavours is a small family kitchen cooking the dishes we grew up with: Namkeen Gosht inspired by Peshawar's Namak Mandi, painda from the south of Pukhtunkhwa, and pulao from Bannu. Every order is cooked fresh for you.</p>
-    <a class="ghost" href="https://instagram.com/{{ st.instagram }}">Follow @{{ st.instagram }}</a></div>
+  <div><span class="eyebrow">About us</span><h2>A family kitchen</h2>
+    <p class="muted">We cook the dishes we grew up with in Khyber Pukhtunkhwa: Namkeen Gosht in the style of Peshawar's Namak Mandi, Painda from the south, and pulao from Bannu. Nothing is made in advance. Every order is cooked fresh for you.</p>
+    {{ hygiene_badge(st.hygiene_rating, st.hygiene_link, "lp-hygiene") }}
+    <p><a class="ghost" href="https://instagram.com/{{ st.instagram }}">Follow @{{ st.instagram }} on Instagram</a></p></div>
 </div></section>
 
-<section class="band sage" id="faq"><div class="wrap lp-faq">
-  <div><span class="eyebrow">Questions</span><h2>Good to know</h2>
+<section class="band{% if not tiffin %} sage{% endif %}" id="faq"><div class="wrap lp-faq">
+  <div><span class="eyebrow">Help</span><h2>Questions and answers</h2>
     <p class="muted">Anything else? <button type="button" class="link" data-chat>Chat with us</button> or WhatsApp <a href="https://wa.me/{{ wa(st.whatsapp) }}">{{ st.whatsapp }}</a>.</p></div>
   <div>
     <details open><summary>How far ahead do I need to order?</summary><p>At least 24 hours before you want it, and 48 hours for Raan Pulao. We cook between {{ st.slot_start }} and {{ st.slot_end }}.</p></details>
     <details><summary>Can I change or cancel my order?</summary><p>Yes, with at least 24 hours' notice. You can cancel from your order link, or message us to change it. Late cancellations may not get a full refund, as ingredients and cooking will already have started.</p></details>
     <details><summary>How do I pay?</summary><p>{{ pay_methods|map(attribute=1)|join(', ') }}. You choose when you order.</p></details>
+    <details><summary>Is there a minimum order?</summary><p>Not for collection. {% if st.delivery_minimum %}Delivery needs at least {{ money(st.delivery_minimum) }} of food.{% else %}There is no minimum for delivery either.{% endif %}</p></details>
     <details><summary>Do you deliver?</summary><p>{% if st.offers_delivery %}Yes. {% for b in bands %}{{ b }}{% if not loop.last %}; {% endif %}{% endfor %}.{% else %}We're collection only for now, from {{ st.kitchen_postcode }}.{% endif %}{% if partners %} You can also order from us on {{ partners|map(attribute='name')|join(' and ') }}.{% endif %}</p></details>
     <details><summary>I have an allergy. Can you help?</summary><p>Please ask before you order: tell us in the chat or on WhatsApp and the cook will reply herself. You can also add a note at checkout.</p></details>
     <details><summary>Can you cook for a party or event?</summary><p>Family portions feed several people, and for bigger orders just message us so we can plan it with you.</p></details>
@@ -128,9 +132,9 @@
 </div></section>
 
 <section class="band forest lp-final"><div class="wrap">
-  <h2>Hungry yet?<br><span class="thin">Order a day ahead.</span></h2>
-  {% if earliest %}<p>Earliest available: <b>{{ earliest }}</b></p>{% endif %}
-  <a class="btn primary big" href="/menu">See the menu and order</a>
+  <h2>Ready to order?</h2>
+  {% if earliest %}<p>Next available day: <b>{{ earliest }}</b></p>{% endif %}
+  <a class="btn primary big" href="/menu">Order now</a>
 </div></section>
 
 <div class="lp-sticky" id="lp-sticky"><a class="btn primary big block" href="/menu">Order now{% if from_price %} · from {{ money(from_price) }}{% endif %}</a></div>
