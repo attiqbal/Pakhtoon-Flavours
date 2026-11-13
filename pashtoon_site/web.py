@@ -166,17 +166,35 @@ def wa_link(phone: str, text: str) -> str:
     return f"https://wa.me/{shop.wa_number(phone)}?text={urlquote(text)}"
 
 
-def ensure_owner() -> None:
-    """Make the owner account if it is missing. Never replaces an existing email or password."""
-    if not db.get_setting("owner_login_email"):
-        email = config.OWNER_EMAIL or menu_data.OWNER_EMAIL
+def _set_owner_password(password: str) -> None:
+    db.set_setting("owner_password_hash", bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
+    db.set_setting("owner_starter_password", password == menu_data.STARTER_PASSWORD)
+
+
+def ensure_owner(reset: bool = False) -> None:
+    """Make the owner account if it is missing. Never replaces an existing email or password, unless reset is true:
+    then the login goes back to the owner email and the starter password (OWNER_PASSWORD in .env is ignored)."""
+    email = config.OWNER_EMAIL or menu_data.OWNER_EMAIL
+    if reset or not db.get_setting("owner_login_email"):
         db.set_setting("owner_login_email", email)
         if not db.get_setting("owner_email"):
             db.set_setting("owner_email", email)        # order alerts go here until she picks another
-    if not db.get_setting("owner_password_hash"):
-        password = config.OWNER_PASSWORD or menu_data.STARTER_PASSWORD
-        db.set_setting("owner_password_hash", bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
-        db.set_setting("owner_starter_password", password == menu_data.STARTER_PASSWORD)
+    if reset:
+        _set_owner_password(menu_data.STARTER_PASSWORD)
+    elif not db.get_setting("owner_password_hash"):
+        _set_owner_password(config.OWNER_PASSWORD or menu_data.STARTER_PASSWORD)
+
+
+def apply_owner_reset() -> bool:
+    """One-shot reset for a site whose database already has an owner login that nobody can use. Set RESET_OWNER_LOGIN to
+    any new value (a date works) and restart: the login goes back to the starter password once. The same value on later
+    restarts does nothing, so it never undoes a password she chose afterwards."""
+    token = config.RESET_OWNER_LOGIN
+    if not token or db.get_setting("owner_reset_token") == token:
+        return False
+    ensure_owner(reset=True)
+    db.set_setting("owner_reset_token", token)
+    return True
 
 
 # ---------------------------------------------------------------- app
@@ -187,6 +205,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     db.init()
     shop.install()
     ensure_owner()
+    apply_owner_reset()
 
     tasks.start()
     app = FastAPI(title="Pakhtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)

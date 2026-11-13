@@ -11,9 +11,7 @@ from . import db, web
 
 def main() -> int:
     db.init()
-    for key in ("owner_login_email", "owner_password_hash"):
-        db.execute("DELETE FROM settings WHERE key=?", (key,))
-    web.ensure_owner()
+    web.ensure_owner(reset=True)
     print(f"Owner login reset: {db.get_setting('owner_login_email')} with the starter password. Change it in the dashboard under Password.")
     return 0
 

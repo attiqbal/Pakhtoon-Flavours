@@ -15,6 +15,7 @@ BASE_URL = _env("PASHTOON_BASE_URL", "http://localhost:8000").rstrip("/")
 # optional overrides for that first start only; an existing password is never replaced.
 OWNER_PASSWORD = _env("OWNER_PASSWORD")
 OWNER_EMAIL = _env("OWNER_EMAIL").lower()
+RESET_OWNER_LOGIN = _env("RESET_OWNER_LOGIN")      # a new value here and a restart puts the owner login back to the starter password, once
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
 # The strongest model by default: it handles unusual questions, menu edits and accounts best. Owners can pick a
 # cheaper one in Settings. Override here with CLAUDE_MODEL in .env.

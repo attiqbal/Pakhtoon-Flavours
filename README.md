@@ -42,7 +42,7 @@ The look of the site is in two files: `static/style.css` is layout only, and `st
 
 ## The owner account
 
-The owner login is created automatically the first time the site starts: **aarzuehtishaam@gmail.com** with the starter password **AshtonUnderlyne**. There is nothing to set up. She can change the password any time in the dashboard under **Password** (the dashboard shows a reminder until she does). Because the starter password is written here, she should choose her own as soon as the site is live. If she forgets it, `python -m pashtoon_site.owner_setup` puts the starter password back.
+The owner login is created automatically the first time the site starts: **aarzuehtishaam@gmail.com** with the starter password **AshtonUnderlyne**. There is nothing to set up. She can change the password any time in the dashboard under **Password** (the dashboard shows a reminder until she does). Because the starter password is written here, she should choose her own as soon as the site is live. An existing login is never replaced by a restart, so a site that was first started with another password keeps it. If she forgets her password, or nobody can sign in, run `python -m pashtoon_site.owner_setup` (in Docker: `docker compose exec <service> python -m pashtoon_site.owner_setup`), or on a host with no shell set `RESET_OWNER_LOGIN` to a new value such as today's date and restart; either puts the owner email and starter password back.
 
 ## On a phone
 
