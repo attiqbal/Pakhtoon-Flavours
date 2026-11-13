@@ -1,0 +1,5 @@
+# HTTPS for the real address and for the old one, so old links and printed QR codes still work: the site itself
+# redirects the old address to the new one (see OLD_HOSTS in DEPLOY.md). DOMAIN comes from .env.
+{$DOMAIN}, www.{$DOMAIN}, pakhtoonflavours.uk, www.pakhtoonflavours.uk {
+	reverse_proxy site:8000
+}

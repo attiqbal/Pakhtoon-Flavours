@@ -1,4 +1,4 @@
-/* Pakhtoon Flavours: layout and components. Colours, fonts and corner sizes come from the theme file loaded after this one (theme-*.css). */
+/* Pashtoon Flavours: layout and components. Colours, fonts and corner sizes come from the theme file loaded after this one (theme-*.css). */
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body { margin: 0; background: var(--cream); color: var(--ink); font: 16px/1.4 var(--text); letter-spacing: .017em; }

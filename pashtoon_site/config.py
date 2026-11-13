@@ -11,6 +11,9 @@ def _env(name: str, default: str = "") -> str:
 DATA_DIR = _env("PASHTOON_DATA_DIR", "data")
 DB_PATH = _env("PASHTOON_DB", os.path.join(DATA_DIR, "pashtoon_site.db"))
 BASE_URL = _env("PASHTOON_BASE_URL", "http://localhost:8000").rstrip("/")
+# Old addresses that now permanently redirect to BASE_URL (same path and query), so old links and printed QR codes keep working.
+# The www. form of BASE_URL's host is redirected too. Comma separated; set OLD_HOSTS to "none" to turn the old-domain redirect off.
+OLD_HOSTS = [h.strip().lower() for h in _env("OLD_HOSTS", "pakhtoonflavours.uk,www.pakhtoonflavours.uk").split(",") if h.strip() and h.strip().lower() != "none"]
 # The owner account is made automatically on first start (menu_data.OWNER_EMAIL and STARTER_PASSWORD). These two are
 # optional overrides for that first start only; an existing password is never replaced.
 OWNER_PASSWORD = _env("OWNER_PASSWORD")

@@ -6,7 +6,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from datetime import date, timedelta
-from urllib.parse import quote as urlquote
+from urllib.parse import quote as urlquote, urlparse
 
 import bcrypt
 import httpx
@@ -166,6 +166,19 @@ def wa_link(phone: str, text: str) -> str:
     return f"https://wa.me/{shop.wa_number(phone)}?text={urlquote(text)}"
 
 
+def redirect_target(host_header: str, path: str, query: str, method: str = "GET") -> tuple[str, int] | None:
+    """Where a request for an old host should go: (url, status), or None when the host is fine. 301 for pages, 308 for
+    anything that is not GET or HEAD so a form post is not turned into a GET."""
+    host = host_header.split(",")[0].strip().lower().split(":")[0]
+    canonical = urlparse(config.BASE_URL).hostname or ""
+    old = set(config.OLD_HOSTS)
+    if canonical and not canonical.startswith("www.") and canonical not in ("localhost", "127.0.0.1"):
+        old.add("www." + canonical)
+    if not host or host == canonical or host not in old or path == "/healthz":
+        return None
+    return config.BASE_URL + path + ("?" + query if query else ""), 301 if method in ("GET", "HEAD") else 308
+
+
 def _set_owner_password(password: str) -> None:
     db.set_setting("owner_password_hash", bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode())
     db.set_setting("owner_starter_password", password == menu_data.STARTER_PASSWORD)
@@ -208,9 +221,18 @@ def create_app(db_path: str | None = None) -> FastAPI:
     apply_owner_reset()
 
     tasks.start()
-    app = FastAPI(title="Pakhtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Pashtoon Flavours", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SessionMiddleware, secret_key=config.secret_key(), session_cookie="pf_session", same_site="lax",
                        https_only=config.BASE_URL.startswith("https"), max_age=60 * 60 * 24 * 30)
+
+    @app.middleware("http")
+    async def canonical_host(request: Request, call_next):
+        """Old domain (and www.) to the real address: permanent redirect, path and query kept. Health checks are exempt."""
+        target = redirect_target(request.headers.get("x-forwarded-host") or request.headers.get("host", ""), request.url.path,
+                                 request.url.query, request.method)
+        if target:
+            return RedirectResponse(target[0], status_code=target[1])
+        return await call_next(request)
     app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
     app.mount("/media", StaticFiles(directory=config.UPLOAD_DIR), name="media")
@@ -502,28 +524,28 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/m/qr.png")
     async def qr_png_file(request: Request):
         _limited(request)
-        return _file(await run_in_threadpool(menu_image.qr_png), "image/png", "pakhtoon-flavours-menu-qr.png", request)
+        return _file(await run_in_threadpool(menu_image.qr_png), "image/png", "pashtoon-flavours-menu-qr.png", request)
 
     @app.get("/m/qr.svg")
     async def qr_svg_file(request: Request):
         _limited(request)
-        return _file(await run_in_threadpool(menu_image.qr_svg), "image/svg+xml", "pakhtoon-flavours-menu-qr.svg", request)
+        return _file(await run_in_threadpool(menu_image.qr_svg), "image/svg+xml", "pashtoon-flavours-menu-qr.svg", request)
 
     @app.get("/menu.png")
     async def menu_png_file(request: Request):
         """The current menu as a shareable picture, drawn fresh each time so it always has the latest dishes and prices."""
         _limited(request)
-        return _file(await run_in_threadpool(menu_image.render_png), "image/png", "pakhtoon-flavours-menu.png", request)
+        return _file(await run_in_threadpool(menu_image.render_png), "image/png", "pashtoon-flavours-menu.png", request)
 
     @app.get("/menu.pdf")
     async def menu_pdf_file(request: Request):
         _limited(request)
-        return _file(await run_in_threadpool(menu_image.render_pdf), "application/pdf", "pakhtoon-flavours-menu.pdf", request)
+        return _file(await run_in_threadpool(menu_image.render_pdf), "application/pdf", "pashtoon-flavours-menu.pdf", request)
 
     @app.get("/owner/qr-poster.pdf")
     async def qr_poster(request: Request):
         need_owner(request)
-        return _file(await run_in_threadpool(menu_image.poster_pdf), "application/pdf", "pakhtoon-flavours-qr-poster.pdf", request)
+        return _file(await run_in_threadpool(menu_image.poster_pdf), "application/pdf", "pashtoon-flavours-qr-poster.pdf", request)
 
     @app.get("/owner/share", response_class=HTMLResponse)
     def share_page(request: Request):
@@ -1331,7 +1353,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         s_, e_ = _range(period, start, end)
         data = reports.excel(kind, s_, e_) if fmt == "xlsx" else reports.pdf(kind, s_, e_)
         mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if fmt == "xlsx" else "application/pdf"
-        fname = f"pakhtoon-flavours-{'accounts' if kind == 'all' else kind}-{e_}.{fmt}"
+        fname = f"pashtoon-flavours-{'accounts' if kind == 'all' else kind}-{e_}.{fmt}"
         return Response(data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
     return app

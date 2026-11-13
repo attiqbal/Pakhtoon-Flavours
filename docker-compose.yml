@@ -21,8 +21,8 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       DOMAIN: ${DOMAIN}
-    command: caddy reverse-proxy --from ${DOMAIN} --to site:8000
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
     depends_on: [site]
 volumes:
