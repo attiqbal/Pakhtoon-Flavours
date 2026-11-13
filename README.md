@@ -28,6 +28,16 @@ assistant that answers customers. It is a standalone app with its own database, 
 - **Settings**: taking orders on/off, hours, daily limit, delivery bands, bank details, review link, banner message, AI on/off and name, password, new kitchen/calendar links.
 - **WhatsApp, Instagram and Facebook Messenger (optional)**: the same assistant answers on Meta's apps through one webhook, `/webhook/meta`, and those chats land in Messages too. Settings shows which are connected.
 
+## Share the menu: QR code and menu image
+
+- **`/m`** is the one-page menu the QR code points to. It shows every dish with prices and the same Add buttons and checkout as `/menu`.
+- **Owner > Share menu** has the QR code (PNG, SVG for printers, and a printable A4 sheet) and **Generate menu image**, a PNG or PDF of the menu drawn from the current dishes and prices, in the style of her printed menu. Make it again after any change. Set `PASHTOON_BASE_URL` in `.env` to the live web address first, so the QR code points at the right place.
+- Delivery has a minimum food order (Settings > Delivery minimum, £50 by default). Collection never has one.
+
+## The owner account
+
+Set `OWNER_EMAIL` and a temporary `OWNER_PASSWORD` in `.env`, then run `python -m pashtoon_site.owner_setup` (or just start a fresh site with `OWNER_MUST_CHANGE=1`). She signs in with her email and the temporary password and is asked to choose her own password before she can use the dashboard. Run the command again to reset a forgotten password.
+
 ## On a phone
 
 The whole site is built for phones first. Customers get a landing page with her cooking clips, swipeable dishes and an
